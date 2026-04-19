@@ -5,7 +5,7 @@
   "scripts": {
     "frontend:dev": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build",
-    "tauri:dev": "node frontend/node_modules/@tauri-apps/cli/tauri.js dev",
-    "tauri:build": "node frontend/node_modules/@tauri-apps/cli/tauri.js build"
+    "tauri:dev": "node tauri dev",
+    "tauri:build": "node tauri build"
   }
 }
