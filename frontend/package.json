@@ -1,0 +1,30 @@
+{
+  "name": "celia-voice-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "tauri:dev": "npm --prefix .. run tauri:dev",
+    "tauri:build": "npm --prefix .. run tauri:build"
+  },
+  "dependencies": {
+    "@primeuix/themes": "^2.0.3",
+    "@tauri-apps/api": "^2.10.1",
+    "pinia": "^3.0.4",
+    "primeicons": "^7.0.0",
+    "primevue": "^4.5.5",
+    "vue": "^3.5.32",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@vue/tsconfig": "^0.9.1",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.2",
+    "vue-tsc": "^3.2.6"
+  }
+}

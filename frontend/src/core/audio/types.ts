@@ -1,0 +1,32 @@
+export type RuntimeTarget = 'web' | 'tauri-desktop' | 'tauri-mobile' | 'automotive'
+
+export type AudioStatus = 'idle' | 'starting' | 'recording' | 'stopping' | 'error'
+
+export type AudioStartResult = {
+  requestId: string
+  runtimeTarget: RuntimeTarget
+  message: string
+}
+
+export type AudioStopResult = {
+  requestId: string | null
+  runtimeTarget: RuntimeTarget
+  message: string
+}
+
+export type AudioInputLevel = {
+  rms: number
+  peak: number
+  sampleRate: number
+  channels: number
+  deviceName: string
+  status: 'idle' | 'recording'
+  updatedAtMs: number
+}
+
+export interface AudioStrategy {
+  readonly target: RuntimeTarget
+  startRecording(): Promise<AudioStartResult>
+  stopRecording(requestId: string | null): Promise<AudioStopResult>
+  getInputLevel(): Promise<AudioInputLevel>
+}
