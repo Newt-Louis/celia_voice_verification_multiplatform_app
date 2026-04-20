@@ -15,6 +15,7 @@ models/
 .env
 .env.local
 *.env
+.idea
 
 .DS_Store
 Thumbs.db
