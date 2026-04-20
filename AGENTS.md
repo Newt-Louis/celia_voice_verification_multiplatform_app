@@ -381,6 +381,7 @@ Các phần phải tạm bỏ qua bằng TODO vì thời gian cấp bách:
 - TODO(ecapa): Chưa có ONNX Runtime/native feature cho `models/v2_int8_fast/ecapa_int8_dynamic.onnx`.
 - TODO(library): Chưa tách pipeline thành SDK/library public cho app khác gọi.
 - TODO(audio-callback): Demo hiện còn cấp phát `std::vector<float>` trong callback để đẩy frame sang Whisper; khi tối ưu cần đổi sang ring buffer/lock-free queue.
+- TODO(streaming): whisper.cpp C API hiện chỉ có callback theo segment, chưa có callback token/từng chữ thật sự; nếu cần chữ chạy sát từng token cần nghiên cứu `whisper-stream` hoặc tách decoder/token loop riêng.
 
 Điểm đang có sau thay đổi mới:
 
@@ -393,12 +394,13 @@ Các phần phải tạm bỏ qua bằng TODO vì thời gian cấp bách:
 - [SUSCESS] Textarea transcript hiện cho phép gõ tay để debug, không còn `readonly`.
 - [SUSCESS] `src-cpp/whisper.cpp` đã được link bằng CMake qua target `whisper`.
 - [SUSCESS] CMake không còn glob toàn bộ `src-cpp/whisper.cpp`; chỉ glob app/audio/main của dự án.
-- [SUSCESS] `WhisperService` load `models/q5_0/ggml-model-q5_0.bin` trên worker thread khi app khởi động.
+- [SUSCESS] `WhisperService` load `models/q5_0/ggml-model-q5_0.bin` trên worker thread khi app khởi động bằng `whisper_init_from_file_with_params_no_state`.
 - [SUSCESS] Audio callback không chạy inference trực tiếp; audio mono f32 16 kHz đã qua DSP được đưa sang Whisper worker liên tục, còn VAD chỉ dùng làm gate quyết định khi nào đủ speech để chạy inference.
 - [SUSCESS] Worker Whisper gom chunk speech ngắn, chạy `whisper_full`, rồi đẩy transcript ra native bridge để Vue hiển thị.
-- [SUSCESS] Cấu hình Whisper trong app đã bám theo `whisper-cli`: `language=vi`, `threads<=4`, beam search, `beam_size=3`, initial prompt tiếng Việt, `use_gpu=true`, `flash_attn=true`.
+- [SUSCESS] Cấu hình Whisper realtime hiện ưu tiên tiếng Anh: `language=en`, greedy/beam-size 1, không initial prompt, `threads<=4`, `use_gpu=true`, `flash_attn=true`.
 - [SUSCESS] Đã build và chạy `cmake-build-msvc-release/bin/whisper-cli.exe` với `models/q5_0/ggml-model-q5_0.bin` và sample `src-cpp/whisper.cpp/samples/jfk.wav`; model trả text đúng trên Windows.
-- [SUSCESS] Chunk Whisper demo đang xử lý khoảng 3-8 giây audio liên tục; nếu model chạy nhưng không nhận ra chữ, status trả về `ready_no_text`.
+- [SUSCESS] Chunk Whisper demo đang xử lý khoảng 1-3 giây audio liên tục, giữ overlap 0.5 giây; segment callback đẩy text ra UI ngay khi Whisper sinh segment.
+- [SUSCESS] Runtime state của Whisper được tạo/free theo từng inference bằng `whisper_init_state`/`whisper_free_state`; khi dừng thu gọi `reset_stream()` để clear queue và abort inference hiện tại.
 - [SUSCESS] Dev build C++/Vue/Whisper pass ngày 2026-04-20 bằng `scripts\build-cpp-windows.cmd`.
 - [SUSCESS] Package `[WINDOWS]_TEST_V1.0.0` mới đã tạo lại ngày 2026-04-20, có copy cả `models/`.
 

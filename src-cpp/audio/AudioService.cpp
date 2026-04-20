@@ -104,6 +104,7 @@ void AudioService::stop_recording() {
     vad_active_.store(false);
     speech_frames_.store(0);
     updated_at_ms_.store(0);
+    whisper_.reset_stream();
 }
 
 AudioLevel AudioService::input_level() const {
