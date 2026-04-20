@@ -47,11 +47,19 @@ export function createWebStrategy(): AudioStrategy {
         return {
           rms: 0,
           peak: 0,
+          processedRms: 0,
+          processedPeak: 0,
+          noiseFloor: 0,
+          vadProbability: 0,
           sampleRate: 0,
           channels: 0,
           deviceName: 'No active input',
           status: 'idle',
-          updatedAtMs: 0
+          vadActive: false,
+          speechFrames: 0,
+          updatedAtMs: 0,
+          transcriptionStatus: 'idle',
+          transcript: ''
         }
       }
 
@@ -72,11 +80,19 @@ export function createWebStrategy(): AudioStrategy {
       return {
         rms: Math.sqrt(sum / timeDomainData.length),
         peak,
+        processedRms: Math.sqrt(sum / timeDomainData.length),
+        processedPeak: peak,
+        noiseFloor: 0,
+        vadProbability: peak > 0.03 ? 1 : 0,
         sampleRate: audioContext.sampleRate,
         channels: settings?.channelCount ?? 1,
         deviceName: track?.label || 'Browser microphone',
         status: 'recording',
-        updatedAtMs: Date.now()
+        vadActive: peak > 0.03,
+        speechFrames: 0,
+        updatedAtMs: Date.now(),
+        transcriptionStatus: 'waiting_for_whisper_cpp',
+        transcript: ''
       }
     }
   }

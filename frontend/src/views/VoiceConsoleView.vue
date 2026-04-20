@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { audioFacade } from '@/core/audio/AudioFacade'
 import { useAudioSessionStore } from '@/stores/audioSession'
 
@@ -16,10 +16,25 @@ const statusSeverity = computed(() => {
 })
 const peakPercent = computed(() => Math.min(100, Math.round(session.inputLevel.peak * 100)))
 const rmsPercent = computed(() => Math.min(100, Math.round(session.inputLevel.rms * 100)))
+const processedPeakPercent = computed(() => Math.min(100, Math.round(session.inputLevel.processedPeak * 100)))
+const vadPercent = computed(() => Math.min(100, Math.round(session.inputLevel.vadProbability * 100)))
+const transcriptDraft = ref('')
+let lastNativeTranscript = ''
 const inputConfig = computed(() => {
   if (session.inputLevel.status === 'idle') return 'Chưa có stream micro'
   return `${session.inputLevel.sampleRate} Hz · ${session.inputLevel.channels} kênh`
 })
+const vadLabel = computed(() => (session.inputLevel.vadActive ? 'Có giọng nói' : 'Đang lọc nền'))
+
+watch(
+  () => session.inputLevel.transcript,
+  (transcript) => {
+    if (!transcript || transcript === lastNativeTranscript) return
+    lastNativeTranscript = transcript
+    transcriptDraft.value = transcript
+  },
+  { immediate: true }
+)
 
 function stopLevelPolling() {
   if (levelPoller !== null) {
@@ -109,6 +124,16 @@ onBeforeUnmount(() => {
             <span>Peak {{ peakPercent }}%</span>
             <span>RMS {{ rmsPercent }}%</span>
           </div>
+          <div class="level-meter level-meter--processed" aria-label="Mức tín hiệu sau lọc">
+            <span :style="{ width: `${processedPeakPercent}%` }"></span>
+          </div>
+          <div class="level-numbers">
+            <span>NS {{ processedPeakPercent }}%</span>
+            <span>VAD {{ vadPercent }}%</span>
+          </div>
+          <p class="vad-state" :class="{ 'vad-state--active': session.inputLevel.vadActive }">
+            {{ vadLabel }}
+          </p>
           <p>{{ inputConfig }}</p>
           <small>{{ session.inputLevel.deviceName }}</small>
         </div>
@@ -122,6 +147,19 @@ onBeforeUnmount(() => {
           @click="toggleRecording"
         />
       </div>
+
+      <section class="transcript-console" aria-label="Realtime transcript">
+        <div class="transcript-console__header">
+          <p class="label">Realtime transcript</p>
+          <strong>{{ session.inputLevel.transcriptionStatus }}</strong>
+        </div>
+        <textarea
+          v-model="transcriptDraft"
+          rows="15"
+          placeholder="Đang chờ giọng nói sau VAD để Whisper sinh văn bản..."
+          aria-label="Văn bản sinh ra từ Whisper"
+        ></textarea>
+      </section>
 
       <section class="pipeline-grid" aria-label="Các lớp xử lý">
         <article>

@@ -17,11 +17,19 @@ export type AudioStopResult = {
 export type AudioInputLevel = {
   rms: number
   peak: number
+  processedRms: number
+  processedPeak: number
+  noiseFloor: number
+  vadProbability: number
   sampleRate: number
   channels: number
   deviceName: string
   status: 'idle' | 'recording'
+  vadActive: boolean
+  speechFrames: number
   updatedAtMs: number
+  transcriptionStatus: string
+  transcript: string
 }
 
 export interface AudioStrategy {

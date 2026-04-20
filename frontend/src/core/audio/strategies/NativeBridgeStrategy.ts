@@ -13,11 +13,19 @@ type NativeStopResponse = {
 type NativeInputLevelResponse = {
   rms?: number
   peak?: number
+  processedRms?: number
+  processedPeak?: number
+  noiseFloor?: number
+  vadProbability?: number
   sampleRate?: number
   channels?: number
   deviceName?: string
   status?: 'idle' | 'recording'
+  vadActive?: boolean
+  speechFrames?: number
   updatedAtMs?: number
+  transcriptionStatus?: AudioInputLevel['transcriptionStatus']
+  transcript?: string
 }
 
 type NativeFunction = (...args: unknown[]) => Promise<unknown>
@@ -72,11 +80,19 @@ export function createNativeBridgeStrategy(target: Exclude<RuntimeTarget, 'web'>
       return {
         rms: response.rms ?? 0,
         peak: response.peak ?? 0,
+        processedRms: response.processedRms ?? 0,
+        processedPeak: response.processedPeak ?? 0,
+        noiseFloor: response.noiseFloor ?? 0,
+        vadProbability: response.vadProbability ?? 0,
         sampleRate: response.sampleRate ?? 0,
         channels: response.channels ?? 0,
         deviceName: response.deviceName ?? 'No active input',
         status: response.status ?? 'idle',
-        updatedAtMs: response.updatedAtMs ?? 0
+        vadActive: response.vadActive ?? false,
+        speechFrames: response.speechFrames ?? 0,
+        updatedAtMs: response.updatedAtMs ?? 0,
+        transcriptionStatus: response.transcriptionStatus ?? 'idle',
+        transcript: response.transcript ?? ''
       }
     }
   }

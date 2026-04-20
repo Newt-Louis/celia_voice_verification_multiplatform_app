@@ -10,7 +10,7 @@ if errorlevel 1 exit /b %errorlevel%
 call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul
 if errorlevel 1 exit /b %errorlevel%
 
-"D:\Application\JetBrains\CLion 2026.1\bin\cmake\win\x64\bin\cmake.exe" --build cmake-build-msvc-debug --target package_app
+"D:\Application\JetBrains\CLion 2026.1\bin\cmake\win\x64\bin\cmake.exe" --build cmake-build-msvc-release --target package_app
 if errorlevel 1 exit /b %errorlevel%
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0make-windows-installer.ps1" -PackageDir "%CD%\builds\%BUILD_LABEL%"

@@ -8,14 +8,18 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_program(NPM_EXECUTABLE npm REQUIRED)
 
-file(GLOB_RECURSE SOURCES
-        "src-cpp/*.cpp"
-        "src-cpp/*.h"
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+        "src-cpp/app/*.cpp"
+        "src-cpp/app/*.h"
+        "src-cpp/audio/*.cpp"
+        "src-cpp/audio/*.h"
+        "src-cpp/main.cpp"
 )
 
 if(WIN32)
     # --- DÀNH CHO WINDOWS (MSVC) ---
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+    add_compile_options(/utf-8)
     set(PLATFORM_LIBS
             advapi32
             dwmapi
@@ -59,6 +63,16 @@ elseif(APPLE)
     endif()
 endif()
 
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static third-party libraries" FORCE)
+option(CELIA_BUILD_WHISPER_TOOLS "Build whisper.cpp command line tools for local verification" ON)
+set(WHISPER_BUILD_TESTS OFF CACHE BOOL "Disable whisper.cpp tests" FORCE)
+set(WHISPER_BUILD_EXAMPLES ${CELIA_BUILD_WHISPER_TOOLS} CACHE BOOL "Build whisper.cpp examples/tools" FORCE)
+set(WHISPER_BUILD_SERVER OFF CACHE BOOL "Disable whisper.cpp server example" FORCE)
+set(WHISPER_CURL OFF CACHE BOOL "Disable curl in whisper.cpp" FORCE)
+set(WHISPER_SDL2 OFF CACHE BOOL "Disable SDL2 in whisper.cpp" FORCE)
+set(GGML_NATIVE OFF CACHE BOOL "Keep packaged CPU code portable" FORCE)
+add_subdirectory(src-cpp/whisper.cpp EXCLUDE_FROM_ALL)
+
 add_custom_target(frontend_build
         COMMAND ${NPM_EXECUTABLE} --prefix "${CMAKE_CURRENT_SOURCE_DIR}/frontend" run build
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -78,10 +92,11 @@ add_dependencies(${TARGET_NAME} frontend_build)
 target_include_directories(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src-cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src-cpp/includes
+        ${CMAKE_CURRENT_SOURCE_DIR}/src-cpp/whisper.cpp/include
 )
 
 # 7. Link tất cả các thư viện đã tìm được vào dự án
-target_link_libraries(${TARGET_NAME} PRIVATE ${PLATFORM_LIBS})
+target_link_libraries(${TARGET_NAME} PRIVATE whisper ${PLATFORM_LIBS})
 
 # 8. Chỉ định vị trí xuất file build (Tùy chọn)
 set_target_properties(${TARGET_NAME} PROPERTIES
@@ -100,6 +115,14 @@ add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
 
 set(CELIA_PACKAGE_LABEL "[WINDOWS]_TEST_V1.0.0" CACHE STRING "Build artifact folder name under builds/")
 set(CELIA_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/builds/${CELIA_PACKAGE_LABEL}" CACHE PATH "Final package output directory")
+set(CELIA_MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models" CACHE PATH "Runtime model directory")
+
+set(CELIA_PACKAGE_MODEL_COMMANDS "")
+if(EXISTS "${CELIA_MODELS_DIR}")
+    list(APPEND CELIA_PACKAGE_MODEL_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_MODELS_DIR}" "${CELIA_PACKAGE_DIR}/app/models"
+    )
+endif()
 
 add_custom_target(package_app
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${CELIA_PACKAGE_DIR}/app"
@@ -109,6 +132,7 @@ add_custom_target(package_app
         COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${TARGET_NAME}>" "${CELIA_PACKAGE_DIR}/app/"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/app/frontend"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist" "${CELIA_PACKAGE_DIR}/app/frontend/dist"
+        ${CELIA_PACKAGE_MODEL_COMMANDS}
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/README.md" "${CELIA_PACKAGE_DIR}/README.md"
         COMMAND ${CMAKE_COMMAND} -E chdir "${CELIA_PACKAGE_DIR}" ${CMAKE_COMMAND} -E tar cf "distribute/Voice Embedded Verification.zip" --format=zip app
         DEPENDS ${TARGET_NAME} frontend_build

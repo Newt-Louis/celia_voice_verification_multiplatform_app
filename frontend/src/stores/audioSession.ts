@@ -12,11 +12,19 @@ type SessionState = {
 const emptyInputLevel = (): AudioInputLevel => ({
   rms: 0,
   peak: 0,
+  processedRms: 0,
+  processedPeak: 0,
+  noiseFloor: 0,
+  vadProbability: 0,
   sampleRate: 0,
   channels: 0,
   deviceName: 'No active input',
   status: 'idle',
-  updatedAtMs: 0
+  vadActive: false,
+  speechFrames: 0,
+  updatedAtMs: 0,
+  transcriptionStatus: 'idle',
+  transcript: ''
 })
 
 export const useAudioSessionStore = defineStore('audioSession', {

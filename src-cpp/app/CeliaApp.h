@@ -18,6 +18,7 @@ public:
 private:
     std::string resolve_frontend_url();
     std::filesystem::path resolve_frontend_index() const;
+    std::filesystem::path resolve_whisper_model() const;
     std::filesystem::path executable_dir() const;
     void bind_audio_api(webview::webview& window);
 

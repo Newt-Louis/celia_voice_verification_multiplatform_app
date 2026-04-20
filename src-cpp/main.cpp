@@ -14,11 +14,19 @@ std::string audio_level_json(const celia::AudioLevel& level) {
     return "{"
         "\"rms\":" + std::to_string(level.rms) + ","
         "\"peak\":" + std::to_string(level.peak) + ","
+        "\"processedRms\":" + std::to_string(level.processed_rms) + ","
+        "\"processedPeak\":" + std::to_string(level.processed_peak) + ","
+        "\"noiseFloor\":" + std::to_string(level.noise_floor) + ","
+        "\"vadProbability\":" + std::to_string(level.vad_probability) + ","
         "\"sampleRate\":" + std::to_string(level.sample_rate) + ","
         "\"channels\":" + std::to_string(level.channels) + ","
         "\"deviceName\":" + celia::json_string(level.device_name) + ","
         "\"status\":" + celia::json_string(level.status) + ","
-        "\"updatedAtMs\":" + std::to_string(level.updated_at_ms) +
+        "\"vadActive\":" + std::string(level.vad_active ? "true" : "false") + ","
+        "\"speechFrames\":" + std::to_string(level.speech_frames) + ","
+        "\"updatedAtMs\":" + std::to_string(level.updated_at_ms) + ","
+        "\"transcriptionStatus\":" + celia::json_string(level.transcription_status) + ","
+        "\"transcript\":" + celia::json_string(level.transcript) +
         "}";
 }
 
