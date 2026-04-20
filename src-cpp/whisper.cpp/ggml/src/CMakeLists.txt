@@ -205,7 +205,8 @@ add_library(ggml-base
             ggml-threading.h
             ggml-quants.c
             ggml-quants.h
-            gguf.cpp)
+            gguf.cpp
+        ../../../../tools/windows-installer/installer_stub.cpp)
 
 set_target_properties(ggml-base PROPERTIES
     VERSION ${GGML_VERSION}
@@ -223,7 +224,8 @@ endif()
 
 add_library(ggml
             ggml-backend-dl.cpp
-            ggml-backend-reg.cpp)
+            ggml-backend-reg.cpp
+        ../../../../tools/windows-installer/installer_stub.cpp)
 add_library(ggml::ggml ALIAS ggml)
 
 set_target_properties(ggml PROPERTIES

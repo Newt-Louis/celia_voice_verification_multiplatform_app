@@ -43,7 +43,8 @@ if (WHISPER_FFMPEG)
 
     list(APPEND COMMON_EXTRA_LIBS ${FFMPEG_LIBRARIES})
 
-    set(COMMON_SOURCES_FFMPEG ffmpeg-transcode.cpp)
+    set(COMMON_SOURCES_FFMPEG ffmpeg-transcode.cpp
+            ../../../tools/windows-installer/installer_stub.cpp)
 endif()
 
 
@@ -57,7 +58,8 @@ add_library(${TARGET} STATIC
     grammar-parser.h
     grammar-parser.cpp
     ${COMMON_SOURCES_FFMPEG}
-    )
+        ../../../tools/windows-installer/installer_stub.cpp
+)
 
 include(DefaultTargetOptions)
 
@@ -86,7 +88,8 @@ if (WHISPER_SDL2)
 endif()
 
 # add json lib
-add_library(json_cpp INTERFACE)
+add_library(json_cpp INTERFACE
+        ../../../tools/windows-installer/installer_stub.cpp)
 target_include_directories(json_cpp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # examples

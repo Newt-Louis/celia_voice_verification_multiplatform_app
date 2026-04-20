@@ -1,5 +1,6 @@
 set(TARGET whisper-vad-speech-segments)
-add_executable(${TARGET} speech.cpp)
+add_executable(${TARGET} speech.cpp
+        ../../../../tools/windows-installer/installer_stub.cpp)
 
 include(DefaultTargetOptions)
 

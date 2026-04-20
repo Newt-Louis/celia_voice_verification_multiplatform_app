@@ -1,5 +1,6 @@
 set(TARGET whisper-quantize)
-add_executable(${TARGET} quantize.cpp)
+add_executable(${TARGET} quantize.cpp
+        ../../../../tools/windows-installer/installer_stub.cpp)
 
 include(DefaultTargetOptions)
 

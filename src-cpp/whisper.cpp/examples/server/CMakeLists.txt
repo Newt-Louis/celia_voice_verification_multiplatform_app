@@ -2,7 +2,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(TARGET whisper-server)
-add_executable(${TARGET} server.cpp httplib.h)
+add_executable(${TARGET} server.cpp httplib.h
+        ../../../../tools/windows-installer/installer_stub.cpp)
 
 include(DefaultTargetOptions)
 

@@ -114,7 +114,7 @@ Các module chính:
     - Soft noise gate để giảm nền.
     - Energy VAD theo `processedRms`, `processedPeak`, `noiseFloor`, có hangover ngắn để tránh nhấp nháy.
   - Expose `sampleRate`, `channels`, `deviceName`, `status`, `updatedAtMs`, `processedRms`, `processedPeak`, `noiseFloor`, `vadProbability`, `vadActive`, `speechFrames`, `transcriptionStatus`, `transcript`.
-  - `transcriptionStatus` hiện là `waiting_for_whisper_cpp` vì chưa vendor/link `whisper.cpp`.
+  - `transcriptionStatus` hiện phản ánh worker sherpa-onnx: `loading_sherpa_onnx`, `ready`, `listening`, `streaming`, `error`.
 
 Không cần tách sẵn folder `windows/`, `android/`, `macos/`, `ios/`, `linux/`, `qnx/` nếu API chung của `webview` và `miniaudio` đủ dùng. Chỉ tách platform folder khi có code thật sự khác nhau, ví dụ permission, resource path, packaging hoặc backend đặc thù.
 
@@ -147,6 +147,16 @@ Root `CMakeLists.txt` hiện:
 - Include:
   - `src-cpp`
   - `src-cpp/includes`
+  - `third_party/sherpa-onnx/sherpa-onnx-v1.12.39-win-x64-shared-MD-Release-no-tts/include`
+- Link sherpa-onnx runtime:
+  - `sherpa-onnx-cxx-api.lib`
+  - `sherpa-onnx-c-api.lib`
+  - `onnxruntime.lib`
+- Post-build copy DLL cạnh exe:
+  - `sherpa-onnx-cxx-api.dll`
+  - `sherpa-onnx-c-api.dll`
+  - `onnxruntime.dll`
+  - `onnxruntime_providers_shared.dll`
 - Windows libs hiện dùng:
   - `advapi32`
   - `dwmapi`
@@ -234,7 +244,7 @@ Lệnh chính cho Windows test package:
 scripts\package-windows.cmd [WINDOWS]_TEST_V1.0.0
 ```
 
-Pipeline này gọi CMake, CMake gọi `npm --prefix frontend run build` qua target `frontend_build`, sau đó build C++ và chạy target `package_app`.
+Pipeline này gọi CMake, CMake gọi `npm.cmd --prefix frontend run build` qua target `frontend_build`, sau đó build C++ và chạy target `package_app`.
 
 Cấu trúc output:
 
@@ -262,7 +272,7 @@ Trong Codex sandbox, configure từng timeout ở bước detect compiler ABI. K
 Chạy executable:
 
 ```powershell
-& '.\cmake-build-msvc-debug\bin\Voice Embedded Verification.exe'
+& '.\cmake-build-msvc-release\bin\Voice Embedded Verification.exe'
 ```
 
 Chạy executable trong package với path literal vì thư mục có dấu `[` và `]`:
@@ -312,7 +322,7 @@ cmd.exe /c "call ""C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\
 Audio smoke test mới đã pass với output dạng:
 
 ```json
-{"rms":0.000878,"peak":0.001515,"processedRms":0.000158,"processedPeak":0.000283,"noiseFloor":0.001500,"vadProbability":0.000000,"sampleRate":16000,"channels":1,"deviceName":"Microphone (3- USB Audio Device)","status":"recording","vadActive":false,"speechFrames":0,"updatedAtMs":1776694678854,"transcriptionStatus":"waiting_for_whisper_cpp","transcript":""}
+{"rms":0.000878,"peak":0.001515,"processedRms":0.000158,"processedPeak":0.000283,"noiseFloor":0.001500,"vadProbability":0.000000,"sampleRate":16000,"channels":1,"deviceName":"Microphone (3- USB Audio Device)","status":"recording","vadActive":false,"speechFrames":0,"updatedAtMs":1776694678854,"transcriptionStatus":"ready","transcript":""}
 ```
 
 Installer silent test đã pass:
@@ -345,17 +355,19 @@ Khi model có mặt trong workspace, giữ nguyên đường dẫn:
 
 ```text
 models/v2_int8_fast/ecapa_int8_dynamic.onnx
-models/q5_0/ggml-model-q5_0.bin
+models/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10/
 ```
 
-Lần quét ngày 2026-04-20 hiện thấy đủ hai model trong workspace:
+Lần quét ngày 2026-04-21 hiện thấy model sherpa-onnx và ECAPA trong workspace:
 
 ```text
-models/q5_0/ggml-model-q5_0.bin
+models/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10/
 models/v2_int8_fast/ecapa_int8_dynamic.onnx
 ```
 
-CMake `package_app` đã được cập nhật để copy `models/` vào:
+Model Whisper cũ `models/q5_0/ggml-model-q5_0.bin` nếu còn tồn tại thì chỉ là dữ liệu lịch sử, app hiện không dùng.
+
+CMake `package_app` đã được cập nhật để copy model sherpa đang dùng và ECAPA vào:
 
 ```text
 builds/[WINDOWS]_TEST_V1.0.0/app/models/
@@ -365,23 +377,49 @@ Nếu chạy script package mà không thấy model trong artifact, cần reconf
 
 ## Pipeline Cấp Bách Hiện Tại
 
+Cập nhật ngày 2026-04-21: runtime ASR đã đổi từ Whisper sang `sherpa-onnx` streaming Zipformer. `src-cpp/whisper.cpp` và model `models/q5_0/ggml-model-q5_0.bin` có thể còn nằm trong workspace như dữ liệu lịch sử, nhưng app hiện không link `whisper` và không dùng `WhisperService` nữa.
+
 Mục tiêu demo gần nhất:
 
 ```text
-Micro realtime -> miniaudio capture -> mono f32 16 kHz -> NS nhẹ -> VAD -> Whisper-small q5_0 -> transcript realtime
+Micro realtime -> miniaudio capture -> mono f32 16 kHz -> NS nhẹ -> VAD -> sherpa-onnx streaming Zipformer -> transcript realtime
 ```
+
+Model sherpa-onnx hiện dùng:
+
+```text
+models/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10/encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx
+models/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10/decoder-epoch-75-avg-11-chunk-16-left-128.onnx
+models/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10/joiner-epoch-75-avg-11-chunk-16-left-128.int8.onnx
+models/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10/tokens.txt
+```
+
+Runtime sherpa-onnx đã vendor:
+
+```text
+third_party/sherpa-onnx/sherpa-onnx-v1.12.39-win-x64-shared-MD-Release-no-tts/
+```
+
+Cấu hình ASR hiện tại:
+
+- `provider=cpu`
+- `num_threads=1`
+- `sample_rate=16000`
+- `feature_dim=80`
+- `decoding_method=greedy_search`
+- `max_active_paths=1`
+- `enable_endpoint=true`
 
 Các phần phải tạm bỏ qua bằng TODO vì thời gian cấp bách:
 
 - TODO(wakeword): Chưa có trạng thái chờ tiết kiệm năng lượng.
 - TODO(wakeword): Chưa có wakeword/từ gọi để bật pipeline đầy đủ.
-- TODO(model-lifecycle): UI mới hiển thị trạng thái `loading/ready/transcribing/error`, nhưng chưa có màn hình khóa thao tác cho tới khi model load xong.
+- TODO(model-lifecycle): UI mới hiển thị trạng thái `loading_sherpa_onnx/ready/listening/streaming/error`, nhưng chưa có màn hình khóa thao tác cho tới khi model load xong.
 - TODO(ecapa): Chưa gắn ECAPA-TDNN vào pipeline.
 - TODO(ecapa): Chưa có cửa sổ trượt xác thực 3 giây, stride 1 giây.
 - TODO(ecapa): Chưa có ONNX Runtime/native feature cho `models/v2_int8_fast/ecapa_int8_dynamic.onnx`.
 - TODO(library): Chưa tách pipeline thành SDK/library public cho app khác gọi.
-- TODO(audio-callback): Demo hiện còn cấp phát `std::vector<float>` trong callback để đẩy frame sang Whisper; khi tối ưu cần đổi sang ring buffer/lock-free queue.
-- TODO(streaming): whisper.cpp C API hiện chỉ có callback theo segment, chưa có callback token/từng chữ thật sự; nếu cần chữ chạy sát từng token cần nghiên cứu `whisper-stream` hoặc tách decoder/token loop riêng.
+- TODO(audio-callback): Demo hiện còn cấp phát `std::vector<float>` trong callback để đẩy frame sang recognizer; khi tối ưu cần đổi sang ring buffer/lock-free queue.
 
 Điểm đang có sau thay đổi mới:
 
@@ -392,17 +430,19 @@ Các phần phải tạm bỏ qua bằng TODO vì thời gian cấp bách:
 - [SUSCESS] Native bridge trả thêm `processedRms`, `processedPeak`, `noiseFloor`, `vadProbability`, `vadActive`, `speechFrames`, `transcriptionStatus`, `transcript`.
 - [SUSCESS] UI hiển thị meter sau lọc NS, VAD %, trạng thái VAD và textarea transcript realtime full chiều ngang.
 - [SUSCESS] Textarea transcript hiện cho phép gõ tay để debug, không còn `readonly`.
-- [SUSCESS] `src-cpp/whisper.cpp` đã được link bằng CMake qua target `whisper`.
-- [SUSCESS] CMake không còn glob toàn bộ `src-cpp/whisper.cpp`; chỉ glob app/audio/main của dự án.
-- [SUSCESS] `WhisperService` load `models/q5_0/ggml-model-q5_0.bin` trên worker thread khi app khởi động bằng `whisper_init_from_file_with_params_no_state`.
-- [SUSCESS] Audio callback không chạy inference trực tiếp; audio mono f32 16 kHz đã qua DSP được đưa sang Whisper worker liên tục, còn VAD chỉ dùng làm gate quyết định khi nào đủ speech để chạy inference.
-- [SUSCESS] Worker Whisper gom chunk speech ngắn, chạy `whisper_full`, rồi đẩy transcript ra native bridge để Vue hiển thị.
-- [SUSCESS] Cấu hình Whisper realtime hiện ưu tiên tiếng Anh: `language=en`, greedy/beam-size 1, không initial prompt, `threads<=4`, `use_gpu=true`, `flash_attn=true`.
-- [SUSCESS] Đã build và chạy `cmake-build-msvc-release/bin/whisper-cli.exe` với `models/q5_0/ggml-model-q5_0.bin` và sample `src-cpp/whisper.cpp/samples/jfk.wav`; model trả text đúng trên Windows.
-- [SUSCESS] Chunk Whisper demo đang xử lý khoảng 1-3 giây audio liên tục, giữ overlap 0.5 giây; segment callback đẩy text ra UI ngay khi Whisper sinh segment.
-- [SUSCESS] Runtime state của Whisper được tạo/free theo từng inference bằng `whisper_init_state`/`whisper_free_state`; khi dừng thu gọi `reset_stream()` để clear queue và abort inference hiện tại.
-- [SUSCESS] Dev build C++/Vue/Whisper pass ngày 2026-04-20 bằng `scripts\build-cpp-windows.cmd`.
-- [SUSCESS] Package `[WINDOWS]_TEST_V1.0.0` mới đã tạo lại ngày 2026-04-20, có copy cả `models/`.
+- [SUSCESS] `WhisperService.*` đã bị thay bằng `SherpaOnnxService.*`.
+- [SUSCESS] CMake đã bỏ `add_subdirectory(src-cpp/whisper.cpp)`, bỏ link target `whisper`, và link `sherpa-onnx-cxx-api.lib`, `sherpa-onnx-c-api.lib`, `onnxruntime.lib`.
+- [SUSCESS] CMake post-build copy `sherpa-onnx-cxx-api.dll`, `sherpa-onnx-c-api.dll`, `onnxruntime.dll`, `onnxruntime_providers_shared.dll` cạnh exe.
+- [SUSCESS] Audio callback không chạy inference trực tiếp; audio mono f32 16 kHz đã qua DSP được đưa sang worker `SherpaOnnxService` liên tục.
+- [SUSCESS] Worker sherpa-onnx decode streaming bằng `OnlineRecognizer`/`OnlineStream`, trả partial transcript ngay trong lúc nói và commit transcript khi endpoint.
+- [SUSCESS] `scripts\build-cpp-windows.cmd` pass ngày 2026-04-21.
+- [SUSCESS] CLI chính thức `sherpa-onnx.exe` load model trong khoảng 3.1 giây, chạy sample `test_wavs/en.wav` với `num_threads=1`, RTF khoảng `0.11`.
+- [SUSCESS] Dev smoke test `--sherpa-wav-test` trong executable của app đã feed `test_wavs/en.wav` theo frame 100 ms và in partial transcript tăng dần tới câu cuối.
+- [SUSCESS] App `cmake-build-msvc-release/bin/Voice Embedded Verification.exe` mở sống sau 8 giây, working set đo nhanh khoảng `421 MB`.
+- [SUSCESS] Package `[WINDOWS]_TEST_V1.0.0` tạo lại ngày 2026-04-21, artifact chỉ copy model sherpa và ECAPA, không copy `models/q5_0`.
+- [SUSCESS] Artifact mới: `Voice Embedded Verification.zip` khoảng `274,458,240` bytes, `Voice Embedded Verification Setup.exe` khoảng `274,711,184` bytes.
+- [SUSCESS] Bản packaged `builds/[WINDOWS]_TEST_V1.0.0/app/Voice Embedded Verification.exe` mở sống sau 8 giây, working set đo nhanh khoảng `422 MB`.
+- [SUSCESS] Bản packaged chạy `--sherpa-wav-test` pass với exit code `0` và trả câu cuối từ `test_wavs/en.wav`.
 
 Lệnh dev/test nhanh:
 
@@ -410,19 +450,13 @@ Lệnh dev/test nhanh:
 scripts\configure-cpp-windows.cmd [WINDOWS]_TEST_V1.0.0
 scripts\build-cpp-windows.cmd
 & '.\cmake-build-msvc-release\bin\Voice Embedded Verification.exe'
+& '.\cmake-build-msvc-release\bin\Voice Embedded Verification.exe' --sherpa-wav-test
 ```
 
-Không dùng `cmake-build-msvc-debug` để test Whisper realtime. Ngày 2026-04-20, cùng `whisper-cli` và sample `jfk.wav`, Debug mất khoảng 93 giây còn Release mất khoảng 4 giây.
+Lưu ý build:
 
-Artifact mới:
-
-```text
-builds/[WINDOWS]_TEST_V1.0.0/app/Voice Embedded Verification.exe
-builds/[WINDOWS]_TEST_V1.0.0/app/models/q5_0/ggml-model-q5_0.bin
-builds/[WINDOWS]_TEST_V1.0.0/app/models/v2_int8_fast/ecapa_int8_dynamic.onnx
-builds/[WINDOWS]_TEST_V1.0.0/distribute/Voice Embedded Verification.zip
-builds/[WINDOWS]_TEST_V1.0.0/distribute/Voice Embedded Verification Setup.exe
-```
+- Trên Windows phải để CMake dùng `npm.cmd`, không dùng `npm.ps1`; PowerShell policy có thể chặn `npm.ps1`.
+- Trong Codex sandbox, Vite/esbuild có thể lỗi `spawn EPERM`; khi gặp lỗi này, rerun build với quyền ngoài sandbox.
 
 ## Quy Tắc
 

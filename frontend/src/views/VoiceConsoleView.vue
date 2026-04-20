@@ -156,8 +156,8 @@ onBeforeUnmount(() => {
         <textarea
           v-model="transcriptDraft"
           rows="15"
-          placeholder="Đang chờ giọng nói sau VAD để Whisper sinh văn bản..."
-          aria-label="Văn bản sinh ra từ Whisper"
+          placeholder="Đang chờ giọng nói sau VAD để sherpa-onnx sinh văn bản..."
+          aria-label="Văn bản sinh ra từ sherpa-onnx"
         ></textarea>
       </section>
 

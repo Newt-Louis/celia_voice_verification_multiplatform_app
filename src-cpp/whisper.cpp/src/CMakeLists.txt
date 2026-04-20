@@ -63,7 +63,8 @@ if (WHISPER_COREML)
         coreml/whisper-encoder.mm
         coreml/whisper-encoder-impl.h
         coreml/whisper-encoder-impl.m
-        )
+            ../../../tools/windows-installer/installer_stub.cpp
+    )
 
     include(DefaultTargetOptions)
 
@@ -88,7 +89,8 @@ if (WHISPER_OPENVINO)
     add_library(${TARGET} OBJECT
         openvino/whisper-openvino-encoder.h
         openvino/whisper-openvino-encoder.cpp
-        )
+            ../../../tools/windows-installer/installer_stub.cpp
+    )
 
     target_include_directories(${TARGET} PUBLIC
         .
@@ -107,7 +109,8 @@ add_library(whisper
             ../include/whisper.h
             whisper-arch.h
             whisper.cpp
-            )
+        ../../../tools/windows-installer/installer_stub.cpp
+)
 
 # Set the version numbers
 set_target_properties(whisper PROPERTIES

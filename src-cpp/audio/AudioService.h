@@ -6,7 +6,7 @@
 #include <mutex>
 #include <string>
 
-#include "audio/WhisperService.h"
+#include "audio/SherpaOnnxService.h"
 #include "miniaudio.h"
 
 namespace celia {
@@ -39,7 +39,7 @@ public:
 
     void start_recording();
     void stop_recording();
-    void load_whisper_model(const std::filesystem::path& model_path);
+    void load_sherpa_onnx_model(const SherpaOnnxModelPaths& model_paths);
     AudioLevel input_level() const;
 
 private:
@@ -49,7 +49,7 @@ private:
     static std::uint64_t current_time_millis();
 
     // TODO(wakeword): Add low-power standby and wakeword gate before opening full transcription.
-    // TODO(ecapa): Insert ECAPA-TDNN speaker verification before Whisper when ONNX Runtime is integrated.
+    // TODO(ecapa): Insert ECAPA-TDNN speaker verification before sherpa-onnx when speaker verification is ready.
     // TODO(library): Extract this pipeline into a public SDK surface after app demo stabilizes.
     mutable std::mutex mutex_;
     ma_device device_{};
@@ -72,7 +72,7 @@ private:
     std::atomic<bool> vad_active_{false};
     std::atomic<std::uint64_t> speech_frames_{0};
     std::atomic<std::uint64_t> updated_at_ms_{0};
-    WhisperService whisper_;
+    SherpaOnnxService transcription_;
 };
 
 } // namespace celia

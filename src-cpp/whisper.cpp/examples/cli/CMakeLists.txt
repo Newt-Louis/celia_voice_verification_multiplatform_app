@@ -1,5 +1,6 @@
 set(TARGET whisper-cli)
-add_executable(${TARGET} cli.cpp)
+add_executable(${TARGET} cli.cpp
+        ../../../../tools/windows-installer/installer_stub.cpp)
 
 include(DefaultTargetOptions)
 

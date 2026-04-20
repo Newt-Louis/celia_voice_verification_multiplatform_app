@@ -91,7 +91,7 @@ export function createWebStrategy(): AudioStrategy {
         vadActive: peak > 0.03,
         speechFrames: 0,
         updatedAtMs: Date.now(),
-        transcriptionStatus: 'waiting_for_whisper_cpp',
+        transcriptionStatus: 'waiting_for_sherpa_onnx',
         transcript: ''
       }
     }

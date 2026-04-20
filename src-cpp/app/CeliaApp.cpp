@@ -44,7 +44,7 @@ CeliaApp::CeliaApp(std::string executable_path)
     : executable_path_(std::move(executable_path)) {}
 
 int CeliaApp::run() {
-    audio_service_.load_whisper_model(resolve_whisper_model());
+    audio_service_.load_sherpa_onnx_model(resolve_sherpa_onnx_model());
 
     webview::webview window(true, nullptr);
     bind_audio_api(window);
@@ -64,7 +64,7 @@ void CeliaApp::bind_audio_api(webview::webview& window) {
         const auto request_id = make_request_id();
         return "{"
             "\"requestId\":" + json_string(request_id) + ","
-            "\"message\":\"Micro desktop đang chạy qua C++ miniaudio, DSP NS/VAD đã bật, Whisper đang nhận frame có giọng nói. TODO: wakeword và ECAPA.\""
+            "\"message\":\"Micro desktop dang chay qua C++ miniaudio, DSP NS/VAD da bat, sherpa-onnx dang nhan stream realtime. TODO: wakeword va ECAPA.\""
             "}";
     });
 
@@ -73,7 +73,7 @@ void CeliaApp::bind_audio_api(webview::webview& window) {
         const auto request_id = first_json_string_argument(request);
         return "{"
             "\"requestId\":" + (request_id.empty() ? "null" : json_string(request_id)) + ","
-            "\"message\":\"Đã dừng stream micro desktop qua C++.\""
+            "\"message\":\"Da dung stream micro desktop qua C++.\""
             "}";
     });
 
@@ -111,10 +111,11 @@ std::filesystem::path CeliaApp::resolve_frontend_index() const {
     return {};
 }
 
-std::filesystem::path CeliaApp::resolve_whisper_model() const {
+SherpaOnnxModelPaths CeliaApp::resolve_sherpa_onnx_model() const {
     const auto current = std::filesystem::current_path();
     const auto exe_dir = executable_dir();
-    const auto relative_model = std::filesystem::path("models") / "q5_0" / "ggml-model-q5_0.bin";
+    const auto relative_model =
+        std::filesystem::path("models") / "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10";
     const std::vector<std::filesystem::path> candidates = {
         current / relative_model,
         current.parent_path() / relative_model,
@@ -124,12 +125,23 @@ std::filesystem::path CeliaApp::resolve_whisper_model() const {
     };
 
     for (const auto& candidate : candidates) {
-        if (std::filesystem::exists(candidate)) {
-            return candidate;
+        if (std::filesystem::exists(candidate / "encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx")) {
+            return SherpaOnnxModelPaths{
+                candidate / "encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
+                candidate / "decoder-epoch-75-avg-11-chunk-16-left-128.onnx",
+                candidate / "joiner-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
+                candidate / "tokens.txt"
+            };
         }
     }
 
-    return current / relative_model;
+    const auto fallback = current / relative_model;
+    return SherpaOnnxModelPaths{
+        fallback / "encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
+        fallback / "decoder-epoch-75-avg-11-chunk-16-left-128.onnx",
+        fallback / "joiner-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
+        fallback / "tokens.txt"
+    };
 }
 
 std::filesystem::path CeliaApp::executable_dir() const {

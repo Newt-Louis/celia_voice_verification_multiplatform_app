@@ -1,5 +1,6 @@
 set(TARGET whisper-bench)
-add_executable(${TARGET} bench.cpp)
+add_executable(${TARGET} bench.cpp
+        ../../../../tools/windows-installer/installer_stub.cpp)
 
 include(DefaultTargetOptions)
 

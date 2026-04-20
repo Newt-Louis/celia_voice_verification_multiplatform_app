@@ -6,9 +6,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_program(NPM_EXECUTABLE npm REQUIRED)
+if(WIN32)
+    find_program(NPM_CMD_EXECUTABLE NAMES npm.cmd REQUIRED)
+else()
+    find_program(NPM_CMD_EXECUTABLE NAMES npm REQUIRED)
+endif()
 
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+file(GLOB_RECURSE SOURCES
         "src-cpp/app/*.cpp"
         "src-cpp/app/*.h"
         "src-cpp/audio/*.cpp"
@@ -17,7 +21,6 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 
 if(WIN32)
-    # --- DÀNH CHO WINDOWS (MSVC) ---
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
     add_compile_options(/utf-8)
     set(PLATFORM_LIBS
@@ -31,27 +34,18 @@ if(WIN32)
             windowscodecs
             ws2_32
     )
-
-    # Nếu dùng WebView2 trên Windows, cần link loader của nó
-    # find_library(WEBVIEW2_LIB WebView2Loader PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libs/windows)
-    # list(APPEND PLATFORM_LIBS ${WEBVIEW2_LIB})
-
 elseif(ANDROID)
     find_library(log-lib log)
     find_library(android-lib android)
-    # Android cần OpenSL ES hoặc AAudio cho âm thanh
     set(PLATFORM_LIBS
             ${log-lib}
             ${android-lib}
             OpenSLES
     )
-
 elseif(APPLE)
-    # --- DÀNH CHO macOS VÀ iOS ---
     find_library(COCOA_LIB Cocoa)
     find_library(WEBKIT_LIB WebKit)
     find_library(COREAUDIO_LIB CoreAudio)
-
     set(PLATFORM_LIBS
             ${COCOA_LIB}
             ${WEBKIT_LIB}
@@ -63,42 +57,50 @@ elseif(APPLE)
     endif()
 endif()
 
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static third-party libraries" FORCE)
-option(CELIA_BUILD_WHISPER_TOOLS "Build whisper.cpp command line tools for local verification" ON)
-set(WHISPER_BUILD_TESTS OFF CACHE BOOL "Disable whisper.cpp tests" FORCE)
-set(WHISPER_BUILD_EXAMPLES ${CELIA_BUILD_WHISPER_TOOLS} CACHE BOOL "Build whisper.cpp examples/tools" FORCE)
-set(WHISPER_BUILD_SERVER OFF CACHE BOOL "Disable whisper.cpp server example" FORCE)
-set(WHISPER_CURL OFF CACHE BOOL "Disable curl in whisper.cpp" FORCE)
-set(WHISPER_SDL2 OFF CACHE BOOL "Disable SDL2 in whisper.cpp" FORCE)
-set(GGML_NATIVE OFF CACHE BOOL "Keep packaged CPU code portable" FORCE)
-add_subdirectory(src-cpp/whisper.cpp EXCLUDE_FROM_ALL)
+set(SHERPA_ONNX_ROOT
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/sherpa-onnx/sherpa-onnx-v1.12.39-win-x64-shared-MD-Release-no-tts"
+        CACHE PATH "sherpa-onnx prebuilt runtime root")
+set(SHERPA_ONNX_INCLUDE_DIR "${SHERPA_ONNX_ROOT}/include")
+set(SHERPA_ONNX_LIB_DIR "${SHERPA_ONNX_ROOT}/lib")
+set(SHERPA_ONNX_LIBS
+        "${SHERPA_ONNX_LIB_DIR}/sherpa-onnx-cxx-api.lib"
+        "${SHERPA_ONNX_LIB_DIR}/sherpa-onnx-c-api.lib"
+        "${SHERPA_ONNX_LIB_DIR}/onnxruntime.lib"
+)
+set(SHERPA_ONNX_DLLS
+        "${SHERPA_ONNX_LIB_DIR}/sherpa-onnx-cxx-api.dll"
+        "${SHERPA_ONNX_LIB_DIR}/sherpa-onnx-c-api.dll"
+        "${SHERPA_ONNX_LIB_DIR}/onnxruntime.dll"
+        "${SHERPA_ONNX_LIB_DIR}/onnxruntime_providers_shared.dll"
+)
+
+foreach(SHERPA_FILE IN LISTS SHERPA_ONNX_LIBS SHERPA_ONNX_DLLS)
+    if(NOT EXISTS "${SHERPA_FILE}")
+        message(FATAL_ERROR "Missing sherpa-onnx runtime file: ${SHERPA_FILE}")
+    endif()
+endforeach()
 
 add_custom_target(frontend_build
-        COMMAND ${NPM_EXECUTABLE} --prefix "${CMAKE_CURRENT_SOURCE_DIR}/frontend" run build
+        COMMAND ${NPM_CMD_EXECUTABLE} --prefix "${CMAKE_CURRENT_SOURCE_DIR}/frontend" run build
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         COMMENT "Building Vue frontend"
         VERBATIM
 )
 
-# 5. LIÊN KẾT ONNX RUNTIME (Ví dụ)
-# Bạn cần trỏ đường dẫn đến đúng file thư viện đã build cho từng OS
-# set(ONNX_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/libs/onnxruntime/${CMAKE_SYSTEM_NAME}")
-# find_library(ONNX_RUNTIME onnxruntime PATHS ${ONNX_LIB_PATH})
-
-# 6. Tạo file thực thi cuối cùng
 add_executable(${TARGET_NAME} ${SOURCES})
 add_dependencies(${TARGET_NAME} frontend_build)
 
 target_include_directories(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src-cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src-cpp/includes
-        ${CMAKE_CURRENT_SOURCE_DIR}/src-cpp/whisper.cpp/include
+        ${SHERPA_ONNX_INCLUDE_DIR}
 )
 
-# 7. Link tất cả các thư viện đã tìm được vào dự án
-target_link_libraries(${TARGET_NAME} PRIVATE whisper ${PLATFORM_LIBS})
+target_link_libraries(${TARGET_NAME} PRIVATE
+        ${SHERPA_ONNX_LIBS}
+        ${PLATFORM_LIBS}
+)
 
-# 8. Chỉ định vị trí xuất file build (Tùy chọn)
 set_target_properties(${TARGET_NAME} PROPERTIES
         OUTPUT_NAME "Voice Embedded Verification"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
@@ -113,14 +115,40 @@ add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         VERBATIM
 )
 
+foreach(SHERPA_DLL IN LISTS SHERPA_ONNX_DLLS)
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${SHERPA_DLL}"
+                    "$<TARGET_FILE_DIR:${TARGET_NAME}>/"
+            COMMENT "Copying ${SHERPA_DLL}"
+            VERBATIM
+    )
+endforeach()
+
 set(CELIA_PACKAGE_LABEL "[WINDOWS]_TEST_V1.0.0" CACHE STRING "Build artifact folder name under builds/")
 set(CELIA_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/builds/${CELIA_PACKAGE_LABEL}" CACHE PATH "Final package output directory")
 set(CELIA_MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models" CACHE PATH "Runtime model directory")
+set(CELIA_SHERPA_MODEL_NAME "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10")
+set(CELIA_SHERPA_MODEL_DIR "${CELIA_MODELS_DIR}/${CELIA_SHERPA_MODEL_NAME}")
+set(CELIA_ECAPA_MODEL "${CELIA_MODELS_DIR}/v2_int8_fast/ecapa_int8_dynamic.onnx")
+
+set(CELIA_PACKAGE_RUNTIME_COMMANDS "")
+foreach(SHERPA_DLL IN LISTS SHERPA_ONNX_DLLS)
+    list(APPEND CELIA_PACKAGE_RUNTIME_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SHERPA_DLL}" "${CELIA_PACKAGE_DIR}/app/"
+    )
+endforeach()
 
 set(CELIA_PACKAGE_MODEL_COMMANDS "")
-if(EXISTS "${CELIA_MODELS_DIR}")
+if(EXISTS "${CELIA_SHERPA_MODEL_DIR}")
     list(APPEND CELIA_PACKAGE_MODEL_COMMANDS
-            COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_MODELS_DIR}" "${CELIA_PACKAGE_DIR}/app/models"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_SHERPA_MODEL_DIR}" "${CELIA_PACKAGE_DIR}/app/models/${CELIA_SHERPA_MODEL_NAME}"
+    )
+endif()
+if(EXISTS "${CELIA_ECAPA_MODEL}")
+    list(APPEND CELIA_PACKAGE_MODEL_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/app/models/v2_int8_fast"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CELIA_ECAPA_MODEL}" "${CELIA_PACKAGE_DIR}/app/models/v2_int8_fast/"
     )
 endif()
 
@@ -130,6 +158,7 @@ add_custom_target(package_app
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/app"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/distribute"
         COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${TARGET_NAME}>" "${CELIA_PACKAGE_DIR}/app/"
+        ${CELIA_PACKAGE_RUNTIME_COMMANDS}
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/app/frontend"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist" "${CELIA_PACKAGE_DIR}/app/frontend/dist"
         ${CELIA_PACKAGE_MODEL_COMMANDS}

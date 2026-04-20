@@ -16,8 +16,8 @@ AudioService::~AudioService() {
     stop_recording();
 }
 
-void AudioService::load_whisper_model(const std::filesystem::path& model_path) {
-    whisper_.start(model_path);
+void AudioService::load_sherpa_onnx_model(const SherpaOnnxModelPaths& model_paths) {
+    transcription_.start(model_paths);
 }
 
 void AudioService::start_recording() {
@@ -104,16 +104,16 @@ void AudioService::stop_recording() {
     vad_active_.store(false);
     speech_frames_.store(0);
     updated_at_ms_.store(0);
-    whisper_.reset_stream();
+    transcription_.reset_stream();
 }
 
 AudioLevel AudioService::input_level() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    const auto whisper_snapshot = whisper_.snapshot();
+    const auto transcription_snapshot = transcription_.snapshot();
     if (!recording_) {
         AudioLevel idle_level{};
-        idle_level.transcription_status = whisper_snapshot.status;
-        idle_level.transcript = whisper_snapshot.transcript;
+        idle_level.transcription_status = transcription_snapshot.status;
+        idle_level.transcript = transcription_snapshot.transcript;
         return idle_level;
     }
 
@@ -131,8 +131,8 @@ AudioLevel AudioService::input_level() const {
         vad_active_.load(),
         speech_frames_.load(),
         updated_at_ms_.load(),
-        whisper_snapshot.status,
-        whisper_snapshot.transcript
+        transcription_snapshot.status,
+        transcription_snapshot.transcript
     };
 }
 
@@ -203,7 +203,7 @@ void AudioService::update_level(const float* samples, ma_uint32 frame_count, ma_
     updated_at_ms_.store(current_time_millis());
 
     if (!processed_samples.empty()) {
-        whisper_.push_audio(processed_samples.data(), processed_samples.size(), vad_active);
+        transcription_.push_audio(processed_samples.data(), processed_samples.size(), vad_active);
     }
 }
 
