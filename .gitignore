@@ -2,12 +2,10 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
-src-tauri/target/
-src-tauri/Cargo.lock
-src-tauri/gen/
 cmake-build-debug*
 cmake-build-release*
 cmake-build-msvc*
+.codex_tmp/
 
 builds/
 models/

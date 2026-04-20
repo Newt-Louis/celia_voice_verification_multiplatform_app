@@ -10,7 +10,7 @@ export default defineConfig({
     strictPort: true,
     host: '127.0.0.1'
   },
-  envPrefix: ['VITE_', 'TAURI_'],
+  envPrefix: ['VITE_'],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))

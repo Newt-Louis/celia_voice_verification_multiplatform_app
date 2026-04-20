@@ -1,4 +1,4 @@
-export type RuntimeTarget = 'web' | 'tauri-desktop' | 'tauri-mobile' | 'automotive'
+export type RuntimeTarget = 'web' | 'native-desktop' | 'native-mobile' | 'automotive'
 
 export type AudioStatus = 'idle' | 'starting' | 'recording' | 'stopping' | 'error'
 

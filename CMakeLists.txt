@@ -6,8 +6,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/includes)
-
 file(GLOB_RECURSE SOURCES
         "src-cpp/*.cpp"
         "src-cpp/*.h"
@@ -17,9 +15,13 @@ if(WIN32)
     # --- DÀNH CHO WINDOWS (MSVC) ---
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
     set(PLATFORM_LIBS
+            advapi32
+            dwmapi
             ole32
+            shell32
             version
             shlwapi
+            user32
             windowscodecs
     )
 
@@ -60,9 +62,12 @@ endif()
 # find_library(ONNX_RUNTIME onnxruntime PATHS ${ONNX_LIB_PATH})
 
 # 6. Tạo file thực thi cuối cùng
-add_executable(${TARGET_NAME} ${SOURCES}
-        src-cpp/main.cpp
-        src-cpp/main.h)
+add_executable(${TARGET_NAME} ${SOURCES})
+
+target_include_directories(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src-cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src-cpp/includes
+)
 
 # 7. Link tất cả các thư viện đã tìm được vào dự án
 target_link_libraries(${TARGET_NAME} PRIVATE ${PLATFORM_LIBS})

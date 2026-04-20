@@ -132,17 +132,17 @@ onBeforeUnmount(() => {
         <article>
           <span>02</span>
           <h2>Facade</h2>
-          <p>Chọn strategy theo Vite ENV hoặc môi trường Tauri.</p>
+          <p>Chọn strategy theo Vite ENV hoặc bridge C++ native.</p>
         </article>
         <article>
           <span>03</span>
           <h2>Strategy</h2>
-          <p>Web, Desktop, Mobile và Automotive tách adapter riêng.</p>
+          <p>Web và native targets đi qua facade chung.</p>
         </article>
         <article>
           <span>04</span>
           <h2>Native</h2>
-          <p>Rust đo tín hiệu micro, C++ để dành cho xử lý audio/model nặng.</p>
+          <p>C++ mở micro bằng miniaudio và điều phối webview.</p>
         </article>
       </section>
     </section>

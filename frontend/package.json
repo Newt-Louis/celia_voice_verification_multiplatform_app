@@ -6,13 +6,11 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1",
-    "tauri:dev": "npm --prefix .. run tauri:dev",
-    "tauri:build": "npm --prefix .. run tauri:build"
+    "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "@primeuix/themes": "^2.0.3",
-    "@tauri-apps/api": "^2.10.1",
+    "celia-voice-verification-workspace": "file:..",
     "pinia": "^3.0.4",
     "primeicons": "^7.0.0",
     "primevue": "^4.5.5",

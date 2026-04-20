@@ -1,16 +1,3 @@
-//
-// Created by ASUS on 4/20/2026.
-//
+#pragma once
 
-#ifndef CELIA_VOICE_VERIFICATION_MULTIPLATFORM_APP_MAIN_H
-#define CELIA_VOICE_VERIFICATION_MULTIPLATFORM_APP_MAIN_H
-
-
-
-class main {
-
-};
-
-
-
-#endif //CELIA_VOICE_VERIFICATION_MULTIPLATFORM_APP_MAIN_H
+int main(int argc, char* argv[]);

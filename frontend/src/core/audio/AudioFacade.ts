@@ -1,10 +1,12 @@
 import type { AudioInputLevel, AudioStartResult, AudioStopResult, AudioStrategy, RuntimeTarget } from './types'
-import { createAutomotiveStrategy } from './strategies/AutomotiveStrategy'
-import { createTauriDesktopStrategy } from './strategies/TauriDesktopStrategy'
-import { createTauriMobileStrategy } from './strategies/TauriMobileStrategy'
+import { createNativeBridgeStrategy } from './strategies/NativeBridgeStrategy'
 import { createWebStrategy } from './strategies/WebStrategy'
 
-const SUPPORTED_TARGETS: RuntimeTarget[] = ['web', 'tauri-desktop', 'tauri-mobile', 'automotive']
+const SUPPORTED_TARGETS: RuntimeTarget[] = ['web', 'native-desktop', 'native-mobile', 'automotive']
+
+function hasNativeBridge(): boolean {
+  return typeof window !== 'undefined' && typeof window.celiaAudioStartRecording === 'function'
+}
 
 function resolveRuntimeTarget(): RuntimeTarget {
   const configuredTarget = import.meta.env.VITE_CELIA_RUNTIME_TARGET
@@ -12,8 +14,8 @@ function resolveRuntimeTarget(): RuntimeTarget {
     return configuredTarget
   }
 
-  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-    return 'tauri-desktop'
+  if (hasNativeBridge()) {
+    return 'native-desktop'
   }
 
   return 'web'
@@ -21,12 +23,10 @@ function resolveRuntimeTarget(): RuntimeTarget {
 
 function createStrategy(target: RuntimeTarget): AudioStrategy {
   switch (target) {
-    case 'tauri-desktop':
-      return createTauriDesktopStrategy()
-    case 'tauri-mobile':
-      return createTauriMobileStrategy()
+    case 'native-desktop':
+    case 'native-mobile':
     case 'automotive':
-      return createAutomotiveStrategy()
+      return createNativeBridgeStrategy(target)
     case 'web':
     default:
       return createWebStrategy()

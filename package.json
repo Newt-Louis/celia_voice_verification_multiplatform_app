@@ -5,7 +5,7 @@
   "scripts": {
     "frontend:dev": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build",
-    "tauri:dev": "cargo tauri dev",
-    "tauri:build": "cargo tauri build"
+    "cpp:configure": "scripts\\configure-cpp-windows.cmd",
+    "cpp:build": "scripts\\build-cpp-windows.cmd"
   }
 }
