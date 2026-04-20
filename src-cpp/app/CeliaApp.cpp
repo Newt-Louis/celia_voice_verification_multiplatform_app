@@ -18,29 +18,6 @@ std::string make_request_id() {
     return "audio-" + std::to_string(millis);
 }
 
-std::string path_to_file_url(const std::filesystem::path& path) {
-    const auto generic = std::filesystem::absolute(path).generic_string();
-    std::ostringstream url;
-    url << "file:///";
-
-    for (const unsigned char ch : generic) {
-        const bool unreserved =
-            (ch >= 'A' && ch <= 'Z') ||
-            (ch >= 'a' && ch <= 'z') ||
-            (ch >= '0' && ch <= '9') ||
-            ch == '-' || ch == '_' || ch == '.' || ch == '~' || ch == '/' || ch == ':';
-
-        if (unreserved) {
-            url << static_cast<char>(ch);
-        } else {
-            const char* digits = "0123456789ABCDEF";
-            url << '%' << digits[(ch >> 4) & 0x0F] << digits[ch & 0x0F];
-        }
-    }
-
-    return url.str();
-}
-
 std::string audio_level_json(const AudioLevel& level) {
     return "{"
         "\"rms\":" + std::to_string(level.rms) + ","
@@ -95,10 +72,10 @@ void CeliaApp::bind_audio_api(webview::webview& window) {
     });
 }
 
-std::string CeliaApp::resolve_frontend_url() const {
+std::string CeliaApp::resolve_frontend_url() {
     const auto index = resolve_frontend_index();
     if (!index.empty() && std::filesystem::exists(index)) {
-        return path_to_file_url(index);
+        return frontend_server_.start(index.parent_path());
     }
 
     return "http://127.0.0.1:1420";

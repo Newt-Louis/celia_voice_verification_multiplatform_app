@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+find_program(NPM_EXECUTABLE npm REQUIRED)
+
 file(GLOB_RECURSE SOURCES
         "src-cpp/*.cpp"
         "src-cpp/*.h"
@@ -23,6 +25,7 @@ if(WIN32)
             shlwapi
             user32
             windowscodecs
+            ws2_32
     )
 
     # Nếu dùng WebView2 trên Windows, cần link loader của nó
@@ -56,6 +59,13 @@ elseif(APPLE)
     endif()
 endif()
 
+add_custom_target(frontend_build
+        COMMAND ${NPM_EXECUTABLE} --prefix "${CMAKE_CURRENT_SOURCE_DIR}/frontend" run build
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Building Vue frontend"
+        VERBATIM
+)
+
 # 5. LIÊN KẾT ONNX RUNTIME (Ví dụ)
 # Bạn cần trỏ đường dẫn đến đúng file thư viện đã build cho từng OS
 # set(ONNX_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/libs/onnxruntime/${CMAKE_SYSTEM_NAME}")
@@ -63,6 +73,7 @@ endif()
 
 # 6. Tạo file thực thi cuối cùng
 add_executable(${TARGET_NAME} ${SOURCES})
+add_dependencies(${TARGET_NAME} frontend_build)
 
 target_include_directories(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src-cpp
@@ -76,4 +87,31 @@ target_link_libraries(${TARGET_NAME} PRIVATE ${PLATFORM_LIBS})
 set_target_properties(${TARGET_NAME} PROPERTIES
         OUTPUT_NAME "Voice Embedded Verification"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+
+add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${TARGET_NAME}>/frontend"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist"
+                "$<TARGET_FILE_DIR:${TARGET_NAME}>/frontend/dist"
+        COMMENT "Copying frontend dist next to executable"
+        VERBATIM
+)
+
+set(CELIA_PACKAGE_LABEL "[WINDOWS]_TEST_V1.0.0" CACHE STRING "Build artifact folder name under builds/")
+set(CELIA_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/builds/${CELIA_PACKAGE_LABEL}" CACHE PATH "Final package output directory")
+
+add_custom_target(package_app
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${CELIA_PACKAGE_DIR}/app"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${CELIA_PACKAGE_DIR}/distribute"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/app"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/distribute"
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${TARGET_NAME}>" "${CELIA_PACKAGE_DIR}/app/"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/app/frontend"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist" "${CELIA_PACKAGE_DIR}/app/frontend/dist"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/README.md" "${CELIA_PACKAGE_DIR}/README.md"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${CELIA_PACKAGE_DIR}" ${CMAKE_COMMAND} -E tar cf "distribute/Voice Embedded Verification.zip" --format=zip app
+        DEPENDS ${TARGET_NAME} frontend_build
+        COMMENT "Packaging app into ${CELIA_PACKAGE_DIR}"
+        VERBATIM
 )

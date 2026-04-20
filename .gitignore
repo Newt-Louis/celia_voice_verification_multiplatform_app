@@ -13,6 +13,7 @@ models/
 *.log
 *.tmp
 *.bak
+*.obj
 .env
 .env.local
 *.env

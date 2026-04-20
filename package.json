@@ -6,6 +6,7 @@
     "frontend:dev": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build",
     "cpp:configure": "scripts\\configure-cpp-windows.cmd",
-    "cpp:build": "scripts\\build-cpp-windows.cmd"
+    "cpp:build": "scripts\\build-cpp-windows.cmd",
+    "windows:test": "scripts\\package-windows.cmd [WINDOWS]_TEST_V1.0.0"
   }
 }

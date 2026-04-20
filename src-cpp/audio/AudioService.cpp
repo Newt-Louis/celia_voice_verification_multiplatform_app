@@ -29,7 +29,9 @@ void AudioService::start_recording() {
 
     const ma_result init_result = ma_device_init(nullptr, &config, &device_);
     if (init_result != MA_SUCCESS) {
-        throw std::runtime_error("Không khởi tạo được thiết bị micro qua miniaudio.");
+        throw std::runtime_error(
+            std::string("Không khởi tạo được thiết bị micro qua miniaudio: ") +
+            ma_result_description(init_result));
     }
     initialized_ = true;
 
@@ -37,7 +39,9 @@ void AudioService::start_recording() {
     if (start_result != MA_SUCCESS) {
         ma_device_uninit(&device_);
         initialized_ = false;
-        throw std::runtime_error("Không chạy được stream micro qua miniaudio.");
+        throw std::runtime_error(
+            std::string("Không chạy được stream micro qua miniaudio: ") +
+            ma_result_description(start_result));
     }
 
     char name[MA_MAX_DEVICE_NAME_LENGTH + 1] = {};

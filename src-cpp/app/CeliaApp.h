@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/AudioService.h"
+#include "app/StaticFileServer.h"
 #include "webview.h"
 
 #include <filesystem>
@@ -15,13 +16,14 @@ public:
     int run();
 
 private:
-    std::string resolve_frontend_url() const;
+    std::string resolve_frontend_url();
     std::filesystem::path resolve_frontend_index() const;
     std::filesystem::path executable_dir() const;
     void bind_audio_api(webview::webview& window);
 
     std::string executable_path_;
     AudioService audio_service_;
+    StaticFileServer frontend_server_;
 };
 
 } // namespace celia
