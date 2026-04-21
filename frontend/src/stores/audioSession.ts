@@ -24,7 +24,9 @@ const emptyInputLevel = (): AudioInputLevel => ({
   speechFrames: 0,
   updatedAtMs: 0,
   transcriptionStatus: 'idle',
-  transcript: ''
+  transcript: '',
+  processingMode: 'custom-dsp',
+  processingDetails: 'Custom DSP NS/VAD'
 })
 
 export const useAudioSessionStore = defineStore('audioSession', {

@@ -59,7 +59,9 @@ export function createWebStrategy(): AudioStrategy {
           speechFrames: 0,
           updatedAtMs: 0,
           transcriptionStatus: 'idle',
-          transcript: ''
+          transcript: '',
+          processingMode: 'web-audio',
+          processingDetails: 'Browser Web Audio input'
         }
       }
 
@@ -92,7 +94,9 @@ export function createWebStrategy(): AudioStrategy {
         speechFrames: 0,
         updatedAtMs: Date.now(),
         transcriptionStatus: 'waiting_for_sherpa_onnx',
-        transcript: ''
+        transcript: '',
+        processingMode: 'web-audio',
+        processingDetails: 'Browser Web Audio input'
       }
     }
   }

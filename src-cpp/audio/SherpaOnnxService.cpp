@@ -3,6 +3,7 @@
 #include "sherpa-onnx/c-api/cxx-api.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace celia {
 namespace {
@@ -42,12 +43,11 @@ void SherpaOnnxService::start(const SherpaOnnxModelPaths& model_paths) {
 
     stop_requested_ = false;
     reset_requested_ = false;
-    speech_seen_in_queue_ = false;
+    session_requested_ = false;
     running_ = true;
     status_ = "loading_sherpa_onnx";
-    committed_transcript_.clear();
-    partial_transcript_.clear();
-    pending_samples_.clear();
+    clear_transcript_locked(true);
+    clear_pending_audio_locked(true);
     worker_ = std::thread(&SherpaOnnxService::worker_loop, this, model_paths);
 }
 
@@ -66,22 +66,53 @@ void SherpaOnnxService::stop() {
     stream_.reset();
     recognizer_.reset();
     running_ = false;
-    pending_samples_.clear();
-    partial_transcript_.clear();
-    speech_seen_in_queue_ = false;
+    session_requested_ = false;
     reset_requested_ = false;
+    clear_pending_audio_locked(true);
+    clear_transcript_locked(true);
     if (status_ != "error") {
         status_ = "idle";
     }
 }
 
+void SherpaOnnxService::start_session() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!running_ || status_ == "error") {
+        return;
+    }
+
+    session_requested_ = true;
+    reset_requested_ = false;
+    clear_pending_audio_locked(false);
+    clear_transcript_locked(true);
+    if (status_ != "loading_sherpa_onnx") {
+        status_ = "ready";
+    }
+    cv_.notify_one();
+}
+
+void SherpaOnnxService::stop_session() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    session_requested_ = false;
+    reset_requested_ = false;
+    clear_pending_audio_locked(true);
+    clear_transcript_locked(true);
+    if (status_ != "error") {
+        status_ = recognizer_ != nullptr ? "ready" : "loading_sherpa_onnx";
+    }
+    cv_.notify_one();
+}
+
 void SherpaOnnxService::reset_stream() {
     std::lock_guard<std::mutex> lock(mutex_);
-    pending_samples_.clear();
-    speech_seen_in_queue_ = false;
-    partial_transcript_.clear();
+    if (!running_ || status_ == "error") {
+        return;
+    }
+
+    clear_pending_audio_locked(true);
+    clear_transcript_locked(false);
     reset_requested_ = true;
-    if (running_ && status_ != "error") {
+    if (session_requested_ && status_ != "loading_sherpa_onnx") {
         status_ = "ready";
     }
     cv_.notify_one();
@@ -93,17 +124,19 @@ void SherpaOnnxService::push_audio(const float* samples, std::size_t sample_coun
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!running_ || stream_ == nullptr || recognizer_ == nullptr || status_ == "error") {
+    if (!running_ || status_ == "error" || !session_requested_) {
         return;
     }
 
-    pending_samples_.insert(pending_samples_.end(), samples, samples + sample_count);
-    speech_seen_in_queue_ = speech_seen_in_queue_ || has_speech;
-    if (pending_samples_.size() > kMaxQueuedSamples) {
-        pending_samples_.erase(
-            pending_samples_.begin(),
-            pending_samples_.begin() + static_cast<std::ptrdiff_t>(pending_samples_.size() - kMaxQueuedSamples));
+    if (pending_samples_.empty()) {
+        pending_samples_.reserve(kMaxQueuedSamples);
     }
+
+    pending_samples_.insert(pending_samples_.end(), samples, samples + sample_count);
+    pending_spans_.push_back(PendingSpan{sample_count, has_speech});
+    discard_oldest_samples_locked((std::max)(std::size_t{0}, unread_sample_count_locked() > kMaxQueuedSamples
+        ? unread_sample_count_locked() - kMaxQueuedSamples
+        : std::size_t{0}));
 
     if (pending_samples_.size() >= kWakeChunkSamples) {
         cv_.notify_one();
@@ -140,90 +173,216 @@ void SherpaOnnxService::worker_loop(SherpaOnnxModelPaths model_paths) {
         return;
     }
 
-    auto stream = std::make_unique<sx::OnlineStream>(recognizer->CreateStream());
-    if (stream->Get() == nullptr) {
-        set_error("Khong tao duoc sherpa-onnx OnlineStream.");
-        return;
-    }
-
     {
         std::lock_guard<std::mutex> lock(mutex_);
         recognizer_ = std::move(recognizer);
-        stream_ = std::move(stream);
         status_ = "ready";
+        pending_samples_.reserve(kMaxQueuedSamples);
     }
 
+    std::vector<float> chunk;
+    chunk.reserve(kWakeChunkSamples * 2);
+
     for (;;) {
-        std::vector<float> chunk;
+        std::unique_ptr<sx::OnlineStream> replacement_stream;
         bool reset_stream = false;
+        bool stop_session = false;
         bool had_speech = false;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            cv_.wait(lock, [this] {
-                return stop_requested_ || reset_requested_ || pending_samples_.size() >= kWakeChunkSamples;
-            });
+            cv_.wait(lock, [this] { return wait_for_work_locked(); });
 
             if (stop_requested_) {
                 break;
             }
 
-            reset_stream = reset_requested_;
-            reset_requested_ = false;
-            if (!pending_samples_.empty()) {
-                chunk.swap(pending_samples_);
+            if (!session_requested_) {
+                stop_session = stream_ != nullptr || unread_sample_count_locked() > 0 || reset_requested_;
+                reset_requested_ = false;
+                clear_pending_audio_locked(true);
+                clear_transcript_locked(true);
+                if (status_ != "error") {
+                    status_ = "ready";
+                }
+                if (!stop_session) {
+                    continue;
+                }
+            } else if (stream_ == nullptr || reset_requested_) {
+                reset_stream = true;
+                reset_requested_ = false;
+                clear_pending_audio_locked(false);
+                partial_transcript_.clear();
+            } else if (!pop_pending_audio_locked(chunk, had_speech)) {
+                continue;
             }
-            had_speech = speech_seen_in_queue_;
-            speech_seen_in_queue_ = false;
+        }
+
+        if (stop_session) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stream_.reset();
+            continue;
         }
 
         if (reset_stream) {
-            recognizer_->Reset(stream_.get());
+            replacement_stream = std::make_unique<sx::OnlineStream>(recognizer_->CreateStream());
+            if (replacement_stream->Get() == nullptr) {
+                set_error("Khong tao duoc sherpa-onnx OnlineStream.");
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!session_requested_) {
+                continue;
+            }
+            stream_ = std::move(replacement_stream);
+            if (status_ != "error") {
+                status_ = "ready";
+            }
             continue;
         }
 
-        if (chunk.empty()) {
-            continue;
+        auto* active_stream = stream_.get();
+        active_stream->AcceptWaveform(kSampleRate, chunk.data(), static_cast<int32_t>(chunk.size()));
+        while (recognizer_->IsReady(active_stream)) {
+            recognizer_->Decode(active_stream);
         }
-
-        stream_->AcceptWaveform(kSampleRate, chunk.data(), static_cast<int32_t>(chunk.size()));
-        while (recognizer_->IsReady(stream_.get())) {
-            recognizer_->Decode(stream_.get());
-        }
+        const auto result = recognizer_->GetResult(active_stream);
+        const bool endpoint = recognizer_->IsEndpoint(active_stream);
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (status_ != "error") {
+            if (!session_requested_ || stream_ == nullptr || status_ == "error") {
+                continue;
+            }
+
+            const auto text = trim_text(result.text);
+            partial_transcript_ = text;
+            if (endpoint) {
+                if (!text.empty()) {
+                    if (!committed_transcript_.empty()) {
+                        committed_transcript_ += ' ';
+                    }
+                    committed_transcript_ += text;
+                    if (committed_transcript_.size() > kMaxTranscriptChars) {
+                        committed_transcript_.erase(0, committed_transcript_.size() - kMaxTranscriptChars);
+                    }
+                }
+                partial_transcript_.clear();
+                reset_requested_ = true;
+                status_ = "ready";
+            } else {
                 status_ = had_speech ? "streaming" : "listening";
             }
         }
-        update_stream_result();
     }
 }
 
-void SherpaOnnxService::update_stream_result() {
-    const auto result = recognizer_->GetResult(stream_.get());
-    const auto text = trim_text(result.text);
-    const bool endpoint = recognizer_->IsEndpoint(stream_.get());
+bool SherpaOnnxService::wait_for_work_locked() const {
+    return stop_requested_ ||
+        (!session_requested_ && (stream_ != nullptr || unread_sample_count_locked() > 0 || reset_requested_)) ||
+        (session_requested_ && (reset_requested_ || stream_ == nullptr || unread_sample_count_locked() >= kWakeChunkSamples));
+}
 
-    std::lock_guard<std::mutex> lock(mutex_);
-    partial_transcript_ = text;
+std::size_t SherpaOnnxService::unread_sample_count_locked() const {
+    return pending_samples_.size() >= pending_read_offset_ ? pending_samples_.size() - pending_read_offset_ : 0;
+}
 
-    if (endpoint) {
-        if (!text.empty()) {
-            if (!committed_transcript_.empty()) {
-                committed_transcript_ += ' ';
-            }
-            committed_transcript_ += text;
-            if (committed_transcript_.size() > kMaxTranscriptChars) {
-                committed_transcript_.erase(0, committed_transcript_.size() - kMaxTranscriptChars);
-            }
+void SherpaOnnxService::clear_pending_audio_locked(bool release_memory) {
+    pending_read_offset_ = 0;
+    pending_spans_.clear();
+    if (release_memory) {
+        std::vector<float>().swap(pending_samples_);
+    } else {
+        pending_samples_.clear();
+    }
+}
+
+void SherpaOnnxService::compact_pending_audio_locked(bool release_memory) {
+    if (pending_read_offset_ == 0) {
+        if (release_memory && pending_samples_.empty()) {
+            std::vector<float>().swap(pending_samples_);
         }
-        partial_transcript_.clear();
-        recognizer_->Reset(stream_.get());
-        if (status_ != "error") {
-            status_ = "ready";
+        return;
+    }
+
+    if (pending_read_offset_ >= pending_samples_.size()) {
+        clear_pending_audio_locked(release_memory);
+        return;
+    }
+
+    pending_samples_.erase(
+        pending_samples_.begin(),
+        pending_samples_.begin() + static_cast<std::ptrdiff_t>(pending_read_offset_));
+    pending_read_offset_ = 0;
+
+    if (release_memory && pending_samples_.empty()) {
+        std::vector<float>().swap(pending_samples_);
+    }
+}
+
+void SherpaOnnxService::discard_oldest_samples_locked(std::size_t sample_count) {
+    if (sample_count == 0) {
+        return;
+    }
+
+    auto remaining = sample_count;
+    while (remaining > 0 && !pending_spans_.empty()) {
+        auto& span = pending_spans_.front();
+        const auto consume = (std::min)(remaining, span.sample_count);
+        span.sample_count -= consume;
+        pending_read_offset_ += consume;
+        remaining -= consume;
+        if (span.sample_count == 0) {
+            pending_spans_.pop_front();
         }
     }
+
+    if (pending_read_offset_ >= kCompactThresholdSamples || unread_sample_count_locked() == 0) {
+        compact_pending_audio_locked(false);
+    }
+}
+
+bool SherpaOnnxService::pop_pending_audio_locked(std::vector<float>& chunk, bool& had_speech) {
+    const auto unread_samples = unread_sample_count_locked();
+    if (unread_samples < kWakeChunkSamples) {
+        return false;
+    }
+
+    const auto sample_count = (std::min)(kWakeChunkSamples, unread_samples);
+    chunk.assign(
+        pending_samples_.begin() + static_cast<std::ptrdiff_t>(pending_read_offset_),
+        pending_samples_.begin() + static_cast<std::ptrdiff_t>(pending_read_offset_ + sample_count));
+
+    had_speech = false;
+    auto remaining = sample_count;
+    while (remaining > 0 && !pending_spans_.empty()) {
+        auto& span = pending_spans_.front();
+        had_speech = had_speech || span.has_speech;
+        const auto consume = (std::min)(remaining, span.sample_count);
+        span.sample_count -= consume;
+        pending_read_offset_ += consume;
+        remaining -= consume;
+        if (span.sample_count == 0) {
+            pending_spans_.pop_front();
+        }
+    }
+
+    if (pending_read_offset_ >= kCompactThresholdSamples || unread_sample_count_locked() == 0) {
+        compact_pending_audio_locked(false);
+    }
+
+    return true;
+}
+
+void SherpaOnnxService::clear_transcript_locked(bool release_memory) {
+    if (release_memory) {
+        std::string().swap(committed_transcript_);
+        std::string().swap(partial_transcript_);
+        return;
+    }
+
+    committed_transcript_.clear();
+    partial_transcript_.clear();
 }
 
 void SherpaOnnxService::set_error(const std::string& message) {
@@ -232,6 +391,9 @@ void SherpaOnnxService::set_error(const std::string& message) {
     committed_transcript_ = message;
     partial_transcript_.clear();
     running_ = false;
+    session_requested_ = false;
+    stream_.reset();
+    clear_pending_audio_locked(true);
 }
 
 std::string SherpaOnnxService::current_transcript_locked() const {

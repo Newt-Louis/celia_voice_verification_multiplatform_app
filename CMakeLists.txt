@@ -106,6 +106,11 @@ set_target_properties(${TARGET_NAME} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
+if(WIN32)
+    set_target_properties(${TARGET_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_link_options(${TARGET_NAME} PRIVATE /ENTRY:mainCRTStartup)
+endif()
+
 add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${TARGET_NAME}>/frontend"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -130,7 +135,15 @@ set(CELIA_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/builds/${CELIA_PACKAGE_LABEL}
 set(CELIA_MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models" CACHE PATH "Runtime model directory")
 set(CELIA_SHERPA_MODEL_NAME "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10")
 set(CELIA_SHERPA_MODEL_DIR "${CELIA_MODELS_DIR}/${CELIA_SHERPA_MODEL_NAME}")
+set(CELIA_SHERPA_OFFICIAL_NS_VAD_DIR "${CELIA_MODELS_DIR}/sherpa-official-ns-vad")
 set(CELIA_ECAPA_MODEL "${CELIA_MODELS_DIR}/v2_int8_fast/ecapa_int8_dynamic.onnx")
+
+set(CELIA_MODE_FILE_CUSTOM "${CMAKE_BINARY_DIR}/celia_audio_mode_custom-dsp.txt")
+set(CELIA_MODE_FILE_RAW "${CMAKE_BINARY_DIR}/celia_audio_mode_raw.txt")
+set(CELIA_MODE_FILE_SHERPA_OFFICIAL "${CMAKE_BINARY_DIR}/celia_audio_mode_sherpa-official.txt")
+file(WRITE "${CELIA_MODE_FILE_CUSTOM}" "custom-dsp\n")
+file(WRITE "${CELIA_MODE_FILE_RAW}" "raw\n")
+file(WRITE "${CELIA_MODE_FILE_SHERPA_OFFICIAL}" "sherpa-official\n")
 
 set(CELIA_PACKAGE_RUNTIME_COMMANDS "")
 foreach(SHERPA_DLL IN LISTS SHERPA_ONNX_DLLS)
@@ -145,6 +158,11 @@ if(EXISTS "${CELIA_SHERPA_MODEL_DIR}")
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_SHERPA_MODEL_DIR}" "${CELIA_PACKAGE_DIR}/app/models/${CELIA_SHERPA_MODEL_NAME}"
     )
 endif()
+if(EXISTS "${CELIA_SHERPA_OFFICIAL_NS_VAD_DIR}")
+    list(APPEND CELIA_PACKAGE_MODEL_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_SHERPA_OFFICIAL_NS_VAD_DIR}" "${CELIA_PACKAGE_DIR}/app/models/sherpa-official-ns-vad"
+    )
+endif()
 if(EXISTS "${CELIA_ECAPA_MODEL}")
     list(APPEND CELIA_PACKAGE_MODEL_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/app/models/v2_int8_fast"
@@ -154,6 +172,9 @@ endif()
 
 add_custom_target(package_app
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${CELIA_PACKAGE_DIR}/app"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${CELIA_PACKAGE_DIR}/app-custom-dsp"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${CELIA_PACKAGE_DIR}/app-raw"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${CELIA_PACKAGE_DIR}/app-sherpa-official"
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${CELIA_PACKAGE_DIR}/distribute"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/app"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/distribute"
@@ -162,8 +183,18 @@ add_custom_target(package_app
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CELIA_PACKAGE_DIR}/app/frontend"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist" "${CELIA_PACKAGE_DIR}/app/frontend/dist"
         ${CELIA_PACKAGE_MODEL_COMMANDS}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CELIA_MODE_FILE_CUSTOM}" "${CELIA_PACKAGE_DIR}/app/celia_audio_mode.txt"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_PACKAGE_DIR}/app" "${CELIA_PACKAGE_DIR}/app-custom-dsp"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CELIA_MODE_FILE_CUSTOM}" "${CELIA_PACKAGE_DIR}/app-custom-dsp/celia_audio_mode.txt"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_PACKAGE_DIR}/app" "${CELIA_PACKAGE_DIR}/app-raw"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CELIA_MODE_FILE_RAW}" "${CELIA_PACKAGE_DIR}/app-raw/celia_audio_mode.txt"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_PACKAGE_DIR}/app" "${CELIA_PACKAGE_DIR}/app-sherpa-official"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CELIA_MODE_FILE_SHERPA_OFFICIAL}" "${CELIA_PACKAGE_DIR}/app-sherpa-official/celia_audio_mode.txt"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/README.md" "${CELIA_PACKAGE_DIR}/README.md"
         COMMAND ${CMAKE_COMMAND} -E chdir "${CELIA_PACKAGE_DIR}" ${CMAKE_COMMAND} -E tar cf "distribute/Voice Embedded Verification.zip" --format=zip app
+        COMMAND ${CMAKE_COMMAND} -E chdir "${CELIA_PACKAGE_DIR}" ${CMAKE_COMMAND} -E tar cf "distribute/Voice Embedded Verification Custom DSP.zip" --format=zip app-custom-dsp
+        COMMAND ${CMAKE_COMMAND} -E chdir "${CELIA_PACKAGE_DIR}" ${CMAKE_COMMAND} -E tar cf "distribute/Voice Embedded Verification Raw ASR.zip" --format=zip app-raw
+        COMMAND ${CMAKE_COMMAND} -E chdir "${CELIA_PACKAGE_DIR}" ${CMAKE_COMMAND} -E tar cf "distribute/Voice Embedded Verification Sherpa Official NS VAD.zip" --format=zip app-sherpa-official
         DEPENDS ${TARGET_NAME} frontend_build
         COMMENT "Packaging app into ${CELIA_PACKAGE_DIR}"
         VERBATIM

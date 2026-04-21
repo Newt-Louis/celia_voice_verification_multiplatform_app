@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -34,16 +35,29 @@ std::string audio_level_json(const AudioLevel& level) {
         "\"speechFrames\":" + std::to_string(level.speech_frames) + ","
         "\"updatedAtMs\":" + std::to_string(level.updated_at_ms) + ","
         "\"transcriptionStatus\":" + json_string(level.transcription_status) + ","
-        "\"transcript\":" + json_string(level.transcript) +
+        "\"transcript\":" + json_string(level.transcript) + ","
+        "\"processingMode\":" + json_string(level.processing_mode) + ","
+        "\"processingDetails\":" + json_string(level.processing_details) +
         "}";
+}
+
+std::string read_first_line(const std::filesystem::path& path) {
+    std::ifstream file(path);
+    std::string line;
+    if (file && std::getline(file, line)) {
+        return line;
+    }
+    return {};
 }
 
 } // namespace
 
-CeliaApp::CeliaApp(std::string executable_path)
-    : executable_path_(std::move(executable_path)) {}
+CeliaApp::CeliaApp(std::string executable_path, std::string audio_mode_override)
+    : executable_path_(std::move(executable_path)),
+      audio_mode_override_(std::move(audio_mode_override)) {}
 
 int CeliaApp::run() {
+    audio_service_.configure_processing(resolve_audio_processing_config());
     audio_service_.load_sherpa_onnx_model(resolve_sherpa_onnx_model());
 
     webview::webview window(true, nullptr);
@@ -62,9 +76,11 @@ void CeliaApp::bind_audio_api(webview::webview& window) {
     window.bind("celiaAudioStartRecording", [this](const std::string&) {
         audio_service_.start_recording();
         const auto request_id = make_request_id();
+        const auto level = audio_service_.input_level();
         return "{"
             "\"requestId\":" + json_string(request_id) + ","
-            "\"message\":\"Micro desktop dang chay qua C++ miniaudio, DSP NS/VAD da bat, sherpa-onnx dang nhan stream realtime. TODO: wakeword va ECAPA.\""
+            "\"message\":\"Micro desktop dang chay qua C++ miniaudio, mode " + level.processing_mode +
+                ", sherpa-onnx dang nhan stream realtime. TODO: wakeword va ECAPA.\""
             "}";
     });
 
@@ -141,6 +157,49 @@ SherpaOnnxModelPaths CeliaApp::resolve_sherpa_onnx_model() const {
         fallback / "decoder-epoch-75-avg-11-chunk-16-left-128.onnx",
         fallback / "joiner-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
         fallback / "tokens.txt"
+    };
+}
+
+AudioProcessingConfig CeliaApp::resolve_audio_processing_config() const {
+    const auto current = std::filesystem::current_path();
+    const auto exe_dir = executable_dir();
+    std::string mode_text = audio_mode_override_;
+    if (mode_text.empty()) {
+        const std::vector<std::filesystem::path> config_candidates = {
+            current / "celia_audio_mode.txt",
+            exe_dir / "celia_audio_mode.txt",
+            exe_dir.parent_path() / "celia_audio_mode.txt"
+        };
+        for (const auto& candidate : config_candidates) {
+            if (std::filesystem::exists(candidate)) {
+                mode_text = read_first_line(candidate);
+                break;
+            }
+        }
+    }
+
+    const auto relative_model = std::filesystem::path("models") / "sherpa-official-ns-vad";
+    const std::vector<std::filesystem::path> model_candidates = {
+        current / relative_model,
+        current.parent_path() / relative_model,
+        exe_dir / relative_model,
+        exe_dir.parent_path() / relative_model,
+        exe_dir.parent_path().parent_path() / relative_model
+    };
+
+    auto model_dir = current / relative_model;
+    for (const auto& candidate : model_candidates) {
+        if (std::filesystem::exists(candidate / "silero_vad.onnx") &&
+            std::filesystem::exists(candidate / "gtcrn_simple.onnx")) {
+            model_dir = candidate;
+            break;
+        }
+    }
+
+    return AudioProcessingConfig{
+        audio_processing_mode_from_id(mode_text),
+        model_dir / "silero_vad.onnx",
+        model_dir / "gtcrn_simple.onnx"
     };
 }
 

@@ -30,6 +30,8 @@ export type AudioInputLevel = {
   updatedAtMs: number
   transcriptionStatus: string
   transcript: string
+  processingMode: string
+  processingDetails: string
 }
 
 export interface AudioStrategy {

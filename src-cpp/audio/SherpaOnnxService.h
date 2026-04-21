@@ -2,6 +2,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -35,13 +36,26 @@ public:
 
     void start(const SherpaOnnxModelPaths& model_paths);
     void stop();
+    void start_session();
+    void stop_session();
     void reset_stream();
     void push_audio(const float* samples, std::size_t sample_count, bool has_speech);
     TranscriptionSnapshot snapshot() const;
 
 private:
+    struct PendingSpan {
+        std::size_t sample_count = 0;
+        bool has_speech = false;
+    };
+
     void worker_loop(SherpaOnnxModelPaths model_paths);
-    void update_stream_result();
+    bool wait_for_work_locked() const;
+    std::size_t unread_sample_count_locked() const;
+    void clear_pending_audio_locked(bool release_memory);
+    void compact_pending_audio_locked(bool release_memory = false);
+    void discard_oldest_samples_locked(std::size_t sample_count);
+    bool pop_pending_audio_locked(std::vector<float>& chunk, bool& had_speech);
+    void clear_transcript_locked(bool release_memory);
     void set_error(const std::string& message);
     std::string current_transcript_locked() const;
     static bool has_all_model_files(const SherpaOnnxModelPaths& model_paths);
@@ -50,6 +64,7 @@ private:
     static constexpr int kSampleRate = 16000;
     static constexpr std::size_t kMaxQueuedSamples = kSampleRate * 6;
     static constexpr std::size_t kWakeChunkSamples = kSampleRate / 10;
+    static constexpr std::size_t kCompactThresholdSamples = kSampleRate;
     static constexpr std::size_t kMaxTranscriptChars = 12000;
 
     mutable std::mutex mutex_;
@@ -60,8 +75,10 @@ private:
     bool stop_requested_ = false;
     bool running_ = false;
     bool reset_requested_ = false;
-    bool speech_seen_in_queue_ = false;
+    bool session_requested_ = false;
     std::vector<float> pending_samples_;
+    std::size_t pending_read_offset_ = 0;
+    std::deque<PendingSpan> pending_spans_;
     std::string status_ = "idle";
     std::string committed_transcript_;
     std::string partial_transcript_;

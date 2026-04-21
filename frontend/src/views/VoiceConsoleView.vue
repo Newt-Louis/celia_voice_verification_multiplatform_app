@@ -24,6 +24,11 @@ const inputConfig = computed(() => {
   if (session.inputLevel.status === 'idle') return 'Chưa có stream micro'
   return `${session.inputLevel.sampleRate} Hz · ${session.inputLevel.channels} kênh`
 })
+const processingModeLabel = computed(() => {
+  const mode = session.inputLevel.processingMode || 'custom-dsp'
+  const details = session.inputLevel.processingDetails || 'Custom DSP NS/VAD'
+  return `${mode} · ${details}`
+})
 const vadLabel = computed(() => (session.inputLevel.vadActive ? 'Có giọng nói' : 'Đang lọc nền'))
 
 watch(
@@ -117,6 +122,7 @@ onBeforeUnmount(() => {
 
         <div class="level-panel">
           <p class="label">Tín hiệu micro</p>
+          <p class="mode-line">{{ processingModeLabel }}</p>
           <div class="level-meter" aria-label="Mức peak micro">
             <span :style="{ width: `${peakPercent}%` }"></span>
           </div>

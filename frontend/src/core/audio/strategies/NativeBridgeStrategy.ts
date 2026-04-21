@@ -26,6 +26,8 @@ type NativeInputLevelResponse = {
   updatedAtMs?: number
   transcriptionStatus?: AudioInputLevel['transcriptionStatus']
   transcript?: string
+  processingMode?: string
+  processingDetails?: string
 }
 
 type NativeFunction = (...args: unknown[]) => Promise<unknown>
@@ -92,7 +94,9 @@ export function createNativeBridgeStrategy(target: Exclude<RuntimeTarget, 'web'>
         speechFrames: response.speechFrames ?? 0,
         updatedAtMs: response.updatedAtMs ?? 0,
         transcriptionStatus: response.transcriptionStatus ?? 'idle',
-        transcript: response.transcript ?? ''
+        transcript: response.transcript ?? '',
+        processingMode: response.processingMode ?? 'custom-dsp',
+        processingDetails: response.processingDetails ?? 'Custom DSP NS/VAD'
       }
     }
   }
