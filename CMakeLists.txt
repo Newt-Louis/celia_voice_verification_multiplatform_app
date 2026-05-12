@@ -87,7 +87,11 @@ add_custom_target(frontend_build
         VERBATIM
 )
 
-add_executable(${TARGET_NAME} ${SOURCES})
+if(WIN32)
+    add_executable(${TARGET_NAME} WIN32 ${SOURCES})
+else()
+    add_executable(${TARGET_NAME} ${SOURCES})
+endif()
 add_dependencies(${TARGET_NAME} frontend_build)
 
 target_include_directories(${TARGET_NAME} PRIVATE
@@ -108,7 +112,7 @@ set_target_properties(${TARGET_NAME} PROPERTIES
 
 if(WIN32)
     set_target_properties(${TARGET_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
-    target_link_options(${TARGET_NAME} PRIVATE /ENTRY:mainCRTStartup)
+    target_link_options(${TARGET_NAME} PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
 endif()
 
 add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
