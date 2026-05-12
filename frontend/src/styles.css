@@ -170,6 +170,11 @@ h1 {
   line-height: 1.4;
 }
 
+.level-panel .diagnostics-line {
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
 .level-panel small {
   display: block;
   margin-top: 4px;

@@ -26,7 +26,11 @@ const emptyInputLevel = (): AudioInputLevel => ({
   transcriptionStatus: 'idle',
   transcript: '',
   processingMode: 'custom-dsp',
-  processingDetails: 'Custom DSP NS/VAD'
+  processingDetails: 'Custom DSP NS/VAD',
+  inputProfile: 'near-field',
+  diagnosticsStatus: 'disabled',
+  rawDiagnosticsPath: '',
+  processedDiagnosticsPath: ''
 })
 
 export const useAudioSessionStore = defineStore('audioSession', {

@@ -2,7 +2,10 @@
 
 #include "app/Json.h"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -37,7 +40,11 @@ std::string audio_level_json(const AudioLevel& level) {
         "\"transcriptionStatus\":" + json_string(level.transcription_status) + ","
         "\"transcript\":" + json_string(level.transcript) + ","
         "\"processingMode\":" + json_string(level.processing_mode) + ","
-        "\"processingDetails\":" + json_string(level.processing_details) +
+        "\"processingDetails\":" + json_string(level.processing_details) + ","
+        "\"inputProfile\":" + json_string(level.input_profile) + ","
+        "\"diagnosticsStatus\":" + json_string(level.diagnostics_status) + ","
+        "\"rawDiagnosticsPath\":" + json_string(level.raw_diagnostics_path) + ","
+        "\"processedDiagnosticsPath\":" + json_string(level.processed_diagnostics_path) +
         "}";
 }
 
@@ -196,10 +203,56 @@ AudioProcessingConfig CeliaApp::resolve_audio_processing_config() const {
         }
     }
 
+    bool diagnostics_enabled = false;
+    std::filesystem::path diagnostics_dir = exe_dir / "audio-diagnostics";
+    const char* diagnostics_env = std::getenv("CELIA_AUDIO_DIAGNOSTICS");
+    if (diagnostics_env != nullptr) {
+        const std::string value = diagnostics_env;
+        diagnostics_enabled = value == "1" || value == "true" || value == "TRUE" || value == "on" || value == "ON";
+    }
+
+    const std::vector<std::filesystem::path> diagnostics_candidates = {
+        current / "celia_audio_diagnostics.txt",
+        exe_dir / "celia_audio_diagnostics.txt",
+        exe_dir.parent_path() / "celia_audio_diagnostics.txt"
+    };
+    for (const auto& candidate : diagnostics_candidates) {
+        if (!std::filesystem::exists(candidate)) {
+            continue;
+        }
+        const auto diagnostics_text = read_first_line(candidate);
+        auto diagnostics_token = diagnostics_text;
+        diagnostics_token.erase(
+            std::remove_if(diagnostics_token.begin(), diagnostics_token.end(), [](unsigned char ch) {
+                return ch == '\r' || ch == '\n' || ch == '\t' || ch == ' ';
+            }),
+            diagnostics_token.end());
+        std::transform(diagnostics_token.begin(), diagnostics_token.end(), diagnostics_token.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+
+        if (diagnostics_token == "0" || diagnostics_token == "false" || diagnostics_token == "off" || diagnostics_token == "disabled") {
+            diagnostics_enabled = false;
+        } else {
+            diagnostics_enabled = true;
+        }
+        if (!diagnostics_text.empty() && diagnostics_enabled &&
+            diagnostics_token != "1" &&
+            diagnostics_token != "true" &&
+            diagnostics_token != "on" &&
+            diagnostics_token != "enabled") {
+            diagnostics_dir = std::filesystem::path(diagnostics_text);
+        }
+        break;
+    }
+
     return AudioProcessingConfig{
         audio_processing_mode_from_id(mode_text),
         model_dir / "silero_vad.onnx",
-        model_dir / "gtcrn_simple.onnx"
+        model_dir / "gtcrn_simple.onnx",
+        diagnostics_enabled,
+        diagnostics_dir,
+        15
     };
 }
 

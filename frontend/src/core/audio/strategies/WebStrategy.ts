@@ -61,7 +61,11 @@ export function createWebStrategy(): AudioStrategy {
           transcriptionStatus: 'idle',
           transcript: '',
           processingMode: 'web-audio',
-          processingDetails: 'Browser Web Audio input'
+          processingDetails: 'Browser Web Audio input',
+          inputProfile: 'browser',
+          diagnosticsStatus: 'disabled',
+          rawDiagnosticsPath: '',
+          processedDiagnosticsPath: ''
         }
       }
 
@@ -96,7 +100,11 @@ export function createWebStrategy(): AudioStrategy {
         transcriptionStatus: 'waiting_for_sherpa_onnx',
         transcript: '',
         processingMode: 'web-audio',
-        processingDetails: 'Browser Web Audio input'
+        processingDetails: 'Browser Web Audio input',
+        inputProfile: 'browser',
+        diagnosticsStatus: 'disabled',
+        rawDiagnosticsPath: '',
+        processedDiagnosticsPath: ''
       }
     }
   }

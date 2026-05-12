@@ -29,6 +29,11 @@ const processingModeLabel = computed(() => {
   const details = session.inputLevel.processingDetails || 'Custom DSP NS/VAD'
   return `${mode} · ${details}`
 })
+const diagnosticsLabel = computed(() => {
+  const status = session.inputLevel.diagnosticsStatus || 'disabled'
+  if (status === 'disabled') return 'Diagnostics: disabled'
+  return `Diagnostics: ${status} | raw=${session.inputLevel.rawDiagnosticsPath || '-'}`
+})
 const vadLabel = computed(() => (session.inputLevel.vadActive ? 'Có giọng nói' : 'Đang lọc nền'))
 
 watch(
@@ -141,6 +146,8 @@ onBeforeUnmount(() => {
             {{ vadLabel }}
           </p>
           <p>{{ inputConfig }}</p>
+          <p>Profile: {{ session.inputLevel.inputProfile }}</p>
+          <p class="diagnostics-line">{{ diagnosticsLabel }}</p>
           <small>{{ session.inputLevel.deviceName }}</small>
         </div>
 

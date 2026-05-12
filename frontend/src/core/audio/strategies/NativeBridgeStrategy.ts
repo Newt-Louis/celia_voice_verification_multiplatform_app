@@ -28,6 +28,10 @@ type NativeInputLevelResponse = {
   transcript?: string
   processingMode?: string
   processingDetails?: string
+  inputProfile?: string
+  diagnosticsStatus?: string
+  rawDiagnosticsPath?: string
+  processedDiagnosticsPath?: string
 }
 
 type NativeFunction = (...args: unknown[]) => Promise<unknown>
@@ -96,7 +100,11 @@ export function createNativeBridgeStrategy(target: Exclude<RuntimeTarget, 'web'>
         transcriptionStatus: response.transcriptionStatus ?? 'idle',
         transcript: response.transcript ?? '',
         processingMode: response.processingMode ?? 'custom-dsp',
-        processingDetails: response.processingDetails ?? 'Custom DSP NS/VAD'
+        processingDetails: response.processingDetails ?? 'Custom DSP NS/VAD',
+        inputProfile: response.inputProfile ?? 'near-field',
+        diagnosticsStatus: response.diagnosticsStatus ?? 'disabled',
+        rawDiagnosticsPath: response.rawDiagnosticsPath ?? '',
+        processedDiagnosticsPath: response.processedDiagnosticsPath ?? ''
       }
     }
   }

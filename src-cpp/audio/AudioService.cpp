@@ -28,6 +28,61 @@ std::string to_utf8_path(const std::filesystem::path& path) {
     return path.u8string();
 }
 
+std::string lower_copy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+bool contains_any(const std::string& value, const std::vector<std::string>& needles) {
+    for (const auto& needle : needles) {
+        if (value.find(needle) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void write_le16(std::ostream& output, std::uint16_t value) {
+    output.put(static_cast<char>(value & 0xFF));
+    output.put(static_cast<char>((value >> 8) & 0xFF));
+}
+
+void write_le32(std::ostream& output, std::uint32_t value) {
+    output.put(static_cast<char>(value & 0xFF));
+    output.put(static_cast<char>((value >> 8) & 0xFF));
+    output.put(static_cast<char>((value >> 16) & 0xFF));
+    output.put(static_cast<char>((value >> 24) & 0xFF));
+}
+
+void write_wav_header(std::ostream& output, std::uint32_t sample_rate, std::uint64_t sample_count) {
+    const auto data_bytes64 = sample_count * sizeof(std::int16_t);
+    const auto data_bytes = static_cast<std::uint32_t>((std::min)(data_bytes64, static_cast<std::uint64_t>(0xFFFFFFFF)));
+    output.seekp(0, std::ios::beg);
+    output.write("RIFF", 4);
+    write_le32(output, 36U + data_bytes);
+    output.write("WAVE", 4);
+    output.write("fmt ", 4);
+    write_le32(output, 16);
+    write_le16(output, 1);
+    write_le16(output, 1);
+    write_le32(output, sample_rate);
+    write_le32(output, sample_rate * sizeof(std::int16_t));
+    write_le16(output, sizeof(std::int16_t));
+    write_le16(output, 16);
+    output.write("data", 4);
+    write_le32(output, data_bytes);
+}
+
+void append_pcm16(std::ostream& output, const float* samples, std::size_t count) {
+    for (std::size_t index = 0; index < count; ++index) {
+        const float clamped = std::clamp(samples[index], -1.0F, 1.0F);
+        const auto pcm = static_cast<std::int16_t>(std::lrint(clamped * 32767.0F));
+        write_le16(output, static_cast<std::uint16_t>(pcm));
+    }
+}
+
 } // namespace
 
 std::string audio_processing_mode_id(AudioProcessingMode mode) {
@@ -73,16 +128,17 @@ void AudioService::configure_processing(const AudioProcessingConfig& config) {
     reset_official_processing();
     switch (processing_config_.mode) {
     case AudioProcessingMode::Raw:
-        processing_details_ = "Raw mic waveform -> sherpa-onnx ASR, no NS/VAD";
+        base_processing_details_ = "Raw mic waveform -> sherpa-onnx ASR, no NS/VAD";
         break;
     case AudioProcessingMode::SherpaOfficial:
-        processing_details_ = "Sherpa official GTCRN NS + Silero VAD";
+        base_processing_details_ = "Sherpa official GTCRN NS + Silero VAD";
         break;
     case AudioProcessingMode::CustomDsp:
     default:
-        processing_details_ = "Custom lightweight DSP NS/VAD";
+        base_processing_details_ = "Custom lightweight DSP NS/VAD";
         break;
     }
+    refresh_processing_details();
 }
 
 void AudioService::start_recording() {
@@ -126,6 +182,8 @@ void AudioService::start_recording() {
 
     sample_rate_ = device_.sampleRate;
     channels_ = device_.capture.channels;
+    classify_input_device();
+    refresh_processing_details();
     dc_last_input_ = 0.0F;
     dc_last_output_ = 0.0F;
     noise_floor_rms_ = 0.01F;
@@ -143,6 +201,7 @@ void AudioService::start_recording() {
     raw_callback_buffer_.clear();
     processed_callback_buffer_.clear();
     official_denoiser_input_buffer_.clear();
+    start_diagnostics_capture();
     recording_ = true;
     transcription_.start_session();
 }
@@ -156,6 +215,7 @@ void AudioService::stop_recording() {
     }
 
     transcription_.stop_session();
+    stop_diagnostics_capture();
     recording_ = false;
     sample_rate_ = 0;
     channels_ = 0;
@@ -189,6 +249,10 @@ AudioLevel AudioService::input_level() const {
         idle_level.transcript = transcription_snapshot.transcript;
         idle_level.processing_mode = audio_processing_mode_id(processing_config_.mode);
         idle_level.processing_details = processing_details_;
+        idle_level.input_profile = input_profile_;
+        idle_level.diagnostics_status = processing_config_.diagnostics_enabled ? "enabled" : "disabled";
+        idle_level.raw_diagnostics_path = to_utf8_path(raw_diagnostics_path_);
+        idle_level.processed_diagnostics_path = to_utf8_path(processed_diagnostics_path_);
         return idle_level;
     }
 
@@ -209,7 +273,11 @@ AudioLevel AudioService::input_level() const {
         transcription_snapshot.status,
         transcription_snapshot.transcript,
         audio_processing_mode_id(processing_config_.mode),
-        processing_details_
+        processing_details_,
+        input_profile_,
+        diagnostics_active_ ? "recording" : (processing_config_.diagnostics_enabled ? "ready" : "disabled"),
+        to_utf8_path(raw_diagnostics_path_),
+        to_utf8_path(processed_diagnostics_path_)
     };
 }
 
@@ -260,10 +328,12 @@ void AudioService::update_level(const float* samples, ma_uint32 frame_count, ma_
         }
 
         const float filtered_rms = std::sqrt(processed_sum / static_cast<float>(frame_count));
-        const float speech_floor = (std::max)(0.012F, noise_floor_rms_ * 3.0F);
+        const float speech_floor = (std::max)(dsp_speech_floor_min_, noise_floor_rms_ * dsp_speech_floor_multiplier_);
         const float speech_ratio = filtered_rms / (speech_floor + std::numeric_limits<float>::epsilon());
         probability = std::clamp((speech_ratio - 0.65F) / 1.35F, 0.0F, 1.0F);
-        const bool speech_now = probability > 0.52F && processed_peak > (std::max)(0.018F, noise_floor_rms_ * 4.0F);
+        const bool speech_now =
+            probability > dsp_vad_on_probability_ &&
+            processed_peak > (std::max)(dsp_peak_min_, noise_floor_rms_ * dsp_peak_noise_multiplier_);
 
         if (speech_now) {
             vad_hangover_callbacks_ = 10;
@@ -274,8 +344,8 @@ void AudioService::update_level(const float* samples, ma_uint32 frame_count, ma_
 
         vad_active = speech_now || vad_hangover_callbacks_ > 0;
         if (!vad_active) {
-            noise_floor_rms_ = (noise_floor_rms_ * 0.985F) + (filtered_rms * 0.015F);
-            noise_floor_rms_ = std::clamp(noise_floor_rms_, 0.0015F, 0.08F);
+            noise_floor_rms_ = (noise_floor_rms_ * (1.0F - dsp_noise_alpha_)) + (filtered_rms * dsp_noise_alpha_);
+            noise_floor_rms_ = std::clamp(noise_floor_rms_, dsp_noise_min_, dsp_noise_max_);
         }
 
         asr_samples = processed_callback_buffer_.data();
@@ -346,6 +416,11 @@ void AudioService::update_level(const float* samples, ma_uint32 frame_count, ma_
     vad_active_.store(vad_active);
     speech_frames_.store(speech_frames_total_);
     updated_at_ms_.store(current_time_millis());
+    append_diagnostics(
+        raw_callback_buffer_.data(),
+        raw_callback_buffer_.size(),
+        processed_callback_buffer_.empty() ? nullptr : processed_callback_buffer_.data(),
+        processed_callback_buffer_.size());
 
     if (asr_samples != nullptr && asr_sample_count > 0) {
         const bool has_speech = mode == AudioProcessingMode::Raw ? true : vad_active;
@@ -360,19 +435,158 @@ float AudioService::process_noise_suppression(float sample) {
     dc_last_input_ = sample;
     dc_last_output_ = std::clamp(high_passed, -1.0F, 1.0F);
 
-    const float gate_threshold = (std::max)(0.004F, noise_floor_rms_ * 1.65F);
+    const float gate_threshold = (std::max)(dsp_gate_min_, noise_floor_rms_ * dsp_gate_multiplier_);
     const float abs_sample = std::fabs(dc_last_output_);
     if (abs_sample <= gate_threshold) {
-        return dc_last_output_ * 0.18F;
+        return std::clamp(dc_last_output_ * dsp_gate_low_gain_ * dsp_output_gain_, -0.98F, 0.98F);
     }
 
     if (abs_sample <= gate_threshold * 2.5F) {
         const float mix = (abs_sample - gate_threshold) / (gate_threshold * 1.5F);
-        const float gain = 0.18F + (0.82F * std::clamp(mix, 0.0F, 1.0F));
-        return dc_last_output_ * gain;
+        const float gain = dsp_gate_low_gain_ + ((1.0F - dsp_gate_low_gain_) * std::clamp(mix, 0.0F, 1.0F));
+        return std::clamp(dc_last_output_ * gain * dsp_output_gain_, -0.98F, 0.98F);
     }
 
-    return dc_last_output_;
+    return std::clamp(dc_last_output_ * dsp_output_gain_, -0.98F, 0.98F);
+}
+
+void AudioService::classify_input_device() {
+    const auto name = lower_copy(device_name_);
+    input_profile_ = "near-field";
+    dsp_output_gain_ = 1.0F;
+    dsp_gate_min_ = 0.004F;
+    dsp_gate_multiplier_ = 1.65F;
+    dsp_gate_low_gain_ = 0.18F;
+    dsp_speech_floor_min_ = 0.012F;
+    dsp_speech_floor_multiplier_ = 3.0F;
+    dsp_vad_on_probability_ = 0.52F;
+    dsp_peak_min_ = 0.018F;
+    dsp_peak_noise_multiplier_ = 4.0F;
+    dsp_noise_alpha_ = 0.015F;
+    dsp_noise_min_ = 0.0015F;
+    dsp_noise_max_ = 0.08F;
+
+    if (contains_any(name, {"bluetooth", "hands-free", "hands free", "handsfree", "ag audio", "hfp", "airpods", "buds"})) {
+        input_profile_ = "bluetooth-speech";
+        dsp_output_gain_ = 2.2F;
+        dsp_gate_min_ = 0.0025F;
+        dsp_gate_multiplier_ = 1.15F;
+        dsp_gate_low_gain_ = 0.52F;
+        dsp_speech_floor_min_ = 0.006F;
+        dsp_speech_floor_multiplier_ = 2.0F;
+        dsp_vad_on_probability_ = 0.34F;
+        dsp_peak_min_ = 0.007F;
+        dsp_peak_noise_multiplier_ = 2.1F;
+        dsp_noise_alpha_ = 0.008F;
+        dsp_noise_min_ = 0.001F;
+        dsp_noise_max_ = 0.12F;
+        return;
+    }
+
+    if (contains_any(name, {"array", "far-field", "far field", "raspberry", "webcam", "camera", "realsense"})) {
+        input_profile_ = "far-field";
+        dsp_output_gain_ = 1.7F;
+        dsp_gate_min_ = 0.003F;
+        dsp_gate_multiplier_ = 1.3F;
+        dsp_gate_low_gain_ = 0.35F;
+        dsp_speech_floor_min_ = 0.008F;
+        dsp_speech_floor_multiplier_ = 2.35F;
+        dsp_vad_on_probability_ = 0.42F;
+        dsp_peak_min_ = 0.010F;
+        dsp_peak_noise_multiplier_ = 2.8F;
+        dsp_noise_alpha_ = 0.010F;
+        dsp_noise_min_ = 0.001F;
+        dsp_noise_max_ = 0.10F;
+    }
+}
+
+void AudioService::refresh_processing_details() {
+    processing_details_ = base_processing_details_ + " | profile=" + input_profile_;
+    if (processing_config_.diagnostics_enabled) {
+        processing_details_ += " | diagnostics=wav";
+    }
+}
+
+void AudioService::start_diagnostics_capture() {
+    stop_diagnostics_capture();
+    raw_diagnostics_path_.clear();
+    processed_diagnostics_path_.clear();
+    if (!processing_config_.diagnostics_enabled || sample_rate_ == 0) {
+        return;
+    }
+
+    const auto timestamp = std::to_string(current_time_millis());
+    const auto dir = processing_config_.diagnostics_dir.empty()
+        ? std::filesystem::current_path() / "audio-diagnostics"
+        : processing_config_.diagnostics_dir;
+    std::filesystem::create_directories(dir);
+
+    raw_diagnostics_path_ = dir / ("raw-" + timestamp + ".wav");
+    processed_diagnostics_path_ = dir / ("processed-" + timestamp + ".wav");
+    raw_diagnostics_.open(raw_diagnostics_path_, std::ios::binary | std::ios::trunc);
+    processed_diagnostics_.open(processed_diagnostics_path_, std::ios::binary | std::ios::trunc);
+    if (!raw_diagnostics_ || !processed_diagnostics_) {
+        raw_diagnostics_.close();
+        processed_diagnostics_.close();
+        raw_diagnostics_path_.clear();
+        processed_diagnostics_path_.clear();
+        return;
+    }
+
+    raw_diagnostics_samples_ = 0;
+    processed_diagnostics_samples_ = 0;
+    diagnostics_max_samples_ = static_cast<std::uint64_t>(sample_rate_) * (std::max)(1U, processing_config_.diagnostics_seconds);
+    write_wav_header(raw_diagnostics_, sample_rate_, 0);
+    write_wav_header(processed_diagnostics_, sample_rate_, 0);
+    raw_diagnostics_.seekp(0, std::ios::end);
+    processed_diagnostics_.seekp(0, std::ios::end);
+    diagnostics_active_ = true;
+}
+
+void AudioService::stop_diagnostics_capture() {
+    if (raw_diagnostics_.is_open()) {
+        write_wav_header(raw_diagnostics_, sample_rate_ == 0 ? 16000 : sample_rate_, raw_diagnostics_samples_);
+        raw_diagnostics_.close();
+    }
+    if (processed_diagnostics_.is_open()) {
+        write_wav_header(processed_diagnostics_, sample_rate_ == 0 ? 16000 : sample_rate_, processed_diagnostics_samples_);
+        processed_diagnostics_.close();
+    }
+    diagnostics_active_ = false;
+}
+
+void AudioService::append_diagnostics(
+    const float* raw_samples,
+    std::size_t raw_count,
+    const float* processed_samples,
+    std::size_t processed_count
+) {
+    if (!diagnostics_active_ || diagnostics_max_samples_ == 0) {
+        return;
+    }
+
+    const auto raw_remaining = diagnostics_max_samples_ > raw_diagnostics_samples_
+        ? diagnostics_max_samples_ - raw_diagnostics_samples_
+        : 0;
+    if (raw_samples != nullptr && raw_remaining > 0 && raw_diagnostics_.is_open()) {
+        const auto writable = (std::min)(raw_count, static_cast<std::size_t>(raw_remaining));
+        append_pcm16(raw_diagnostics_, raw_samples, writable);
+        raw_diagnostics_samples_ += writable;
+    }
+
+    const auto processed_remaining = diagnostics_max_samples_ > processed_diagnostics_samples_
+        ? diagnostics_max_samples_ - processed_diagnostics_samples_
+        : 0;
+    if (processed_samples != nullptr && processed_remaining > 0 && processed_diagnostics_.is_open()) {
+        const auto writable = (std::min)(processed_count, static_cast<std::size_t>(processed_remaining));
+        append_pcm16(processed_diagnostics_, processed_samples, writable);
+        processed_diagnostics_samples_ += writable;
+    }
+
+    if (raw_diagnostics_samples_ >= diagnostics_max_samples_ &&
+        processed_diagnostics_samples_ >= diagnostics_max_samples_) {
+        stop_diagnostics_capture();
+    }
 }
 
 void AudioService::ensure_official_processing_ready() {

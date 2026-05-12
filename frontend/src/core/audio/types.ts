@@ -32,6 +32,10 @@ export type AudioInputLevel = {
   transcript: string
   processingMode: string
   processingDetails: string
+  inputProfile: string
+  diagnosticsStatus: string
+  rawDiagnosticsPath: string
+  processedDiagnosticsPath: string
 }
 
 export interface AudioStrategy {
