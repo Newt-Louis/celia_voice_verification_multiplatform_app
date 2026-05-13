@@ -1,0 +1,5 @@
+foreach(REQUIRED_MODEL_FILE IN LISTS REQUIRED_MODEL_FILES)
+    if(NOT EXISTS "${REQUIRED_MODEL_FILE}")
+        message(FATAL_ERROR "Missing required runtime model file: ${REQUIRED_MODEL_FILE}")
+    endif()
+endforeach()

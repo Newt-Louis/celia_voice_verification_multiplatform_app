@@ -141,6 +141,12 @@ set(CELIA_SHERPA_MODEL_NAME "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_v
 set(CELIA_SHERPA_MODEL_DIR "${CELIA_MODELS_DIR}/${CELIA_SHERPA_MODEL_NAME}")
 set(CELIA_SHERPA_OFFICIAL_NS_VAD_DIR "${CELIA_MODELS_DIR}/sherpa-official-ns-vad")
 set(CELIA_ECAPA_MODEL "${CELIA_MODELS_DIR}/v2_int8_fast/ecapa_int8_dynamic.onnx")
+set(CELIA_REQUIRED_SHERPA_MODEL_FILES
+        "${CELIA_SHERPA_MODEL_DIR}/encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx"
+        "${CELIA_SHERPA_MODEL_DIR}/decoder-epoch-75-avg-11-chunk-16-left-128.onnx"
+        "${CELIA_SHERPA_MODEL_DIR}/joiner-epoch-75-avg-11-chunk-16-left-128.int8.onnx"
+        "${CELIA_SHERPA_MODEL_DIR}/tokens.txt"
+)
 
 set(CELIA_MODE_FILE_CUSTOM "${CMAKE_BINARY_DIR}/celia_audio_mode_custom-dsp.txt")
 set(CELIA_MODE_FILE_RAW "${CMAKE_BINARY_DIR}/celia_audio_mode_raw.txt")
@@ -157,11 +163,12 @@ foreach(SHERPA_DLL IN LISTS SHERPA_ONNX_DLLS)
 endforeach()
 
 set(CELIA_PACKAGE_MODEL_COMMANDS "")
-if(EXISTS "${CELIA_SHERPA_MODEL_DIR}")
-    list(APPEND CELIA_PACKAGE_MODEL_COMMANDS
-            COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_SHERPA_MODEL_DIR}" "${CELIA_PACKAGE_DIR}/app/models/${CELIA_SHERPA_MODEL_NAME}"
-    )
-endif()
+list(APPEND CELIA_PACKAGE_MODEL_COMMANDS
+        COMMAND ${CMAKE_COMMAND}
+                "-DREQUIRED_MODEL_FILES=${CELIA_REQUIRED_SHERPA_MODEL_FILES}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-package-models.cmake"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_SHERPA_MODEL_DIR}" "${CELIA_PACKAGE_DIR}/app/models/${CELIA_SHERPA_MODEL_NAME}"
+)
 if(EXISTS "${CELIA_SHERPA_OFFICIAL_NS_VAD_DIR}")
     list(APPEND CELIA_PACKAGE_MODEL_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${CELIA_SHERPA_OFFICIAL_NS_VAD_DIR}" "${CELIA_PACKAGE_DIR}/app/models/sherpa-official-ns-vad"

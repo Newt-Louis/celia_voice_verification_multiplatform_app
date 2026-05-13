@@ -50,6 +50,25 @@ $env:CELIA_NINJA_EXE='C:\Tools\ninja\ninja.exe'
 
 Nếu chỉ muốn ưu tiên Ninja khi script tự tìm thấy, đặt `$env:CELIA_PREFER_NINJA='1'`.
 
+## Runtime Models
+
+Trước khi package Windows, đặt model sherpa-onnx ASR vào:
+
+```text
+models/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10/
+```
+
+Thư mục này phải có ít nhất:
+
+```text
+encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx
+decoder-epoch-75-avg-11-chunk-16-left-128.onnx
+joiner-epoch-75-avg-11-chunk-16-left-128.int8.onnx
+tokens.txt
+```
+
+`models/` không được commit vào git. Package script sẽ copy model vào `builds/[...]/app/models/` và sẽ dừng build nếu thiếu file bắt buộc.
+
 ## Test Micro Native
 
 ```powershell
