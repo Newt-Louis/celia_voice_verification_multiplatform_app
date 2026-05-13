@@ -1,7 +1,9 @@
 @echo off
 setlocal
 
-call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul
+for %%I in ("%~dp0..") do set "REPO_ROOT=%%~fI"
+
+call "%~dp0windows-build-env.cmd"
 if errorlevel 1 exit /b %errorlevel%
 
-"D:\Application\JetBrains\CLion 2026.1\bin\cmake\win\x64\bin\cmake.exe" --build cmake-build-msvc-release --target Voice_Embedded_Verification
+"%CELIA_CMAKE_EXE%" --build "%REPO_ROOT%\%CELIA_BUILD_DIR%" --target Voice_Embedded_Verification

@@ -8,7 +8,7 @@
 scripts\package-windows.cmd [WINDOWS]_TEST_V1.0.0
 ```
 
-Pipeline này tự build Vue frontend, build C++ bằng MSVC/Ninja, copy `frontend/dist` cạnh executable, rồi xuất artifact vào:
+Pipeline này tự build Vue frontend, build C++ bằng MSVC, copy `frontend/dist` cạnh executable, rồi xuất artifact vào:
 
 ```text
 builds/[WINDOWS]_TEST_V1.0.0/
@@ -30,6 +30,25 @@ builds/[WINDOWS]_TEST_V1.0.0/distribute/Voice Embedded Verification Setup.exe
 ```
 
 và tạo shortcut ngoài Desktop.
+
+## Windows Build Tools
+
+Các script trong `scripts/` tự dò toolchain theo thứ tự:
+
+- MSVC `vcvars64.bat` từ Visual Studio Build Tools/Visual Studio.
+- `cmake.exe` từ PATH, Visual Studio CMake tools, standalone CMake, hoặc CLion nếu có.
+- `ninja.exe` từ PATH, Visual Studio CMake tools, hoặc CLion nếu bạn bật Ninja.
+
+Mặc định script dùng `NMake Makefiles` vì `nmake.exe` đi kèm MSVC Build Tools và không cần CLion/Ninja. Trên laptop không cần cài CLion. Cần có Visual Studio Build Tools với workload `Desktop development with C++` và một nguồn CMake: standalone CMake, hoặc component CMake trong Visual Studio Build Tools. Có thể override thủ công bằng biến môi trường:
+
+```powershell
+$env:CELIA_VCVARS64='C:\Program Files\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat'
+$env:CELIA_CMAKE_EXE='C:\Program Files\CMake\bin\cmake.exe'
+$env:CELIA_CMAKE_GENERATOR='Ninja'
+$env:CELIA_NINJA_EXE='C:\Tools\ninja\ninja.exe'
+```
+
+Nếu chỉ muốn ưu tiên Ninja khi script tự tìm thấy, đặt `$env:CELIA_PREFER_NINJA='1'`.
 
 ## Test Micro Native
 
